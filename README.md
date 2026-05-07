@@ -47,10 +47,12 @@ Hochverfügbares Reverse-Proxy-Setup mit zwei nginx-Nodes, Floating-IP via keepa
 
 ## Erste Schritte
 
-1. [Initial-Setup](docs/setup.md) — Bootstrap der beiden VMs
+1. [Initial-Setup](docs/setup.md) — Bootstrap der beiden VMs (whiptail-TUI)
 2. [Service hinzufügen](docs/adding-a-service.md) — neue Backends einbinden
 3. [Failover testen](docs/failover-test.md) — VRRP-Wechsel verifizieren
-4. [Runbook](docs/runbook.md) — Troubleshooting im Betrieb
+4. [Runbook](docs/runbook.md) — tägliche/wöchentliche Checks + Eskalationen
+5. [Recovery](docs/recovery.md) — drei Krisen-Szenarien Schritt-für-Schritt
+6. [Architektur](docs/architecture.md) — Designentscheidungen + Trade-offs
 
 ## Deployment-Workflow
 
