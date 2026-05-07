@@ -518,7 +518,7 @@ EOF
 # Phase B
 # ============================================================================
 phase_b_packages() {
-    echo "=== Phase B [1/9] System-Update + Pakete ==="
+    echo "=== Phase B [1/10] System-Update + Pakete ==="
     DEBIAN_FRONTEND=noninteractive apt-get update
     DEBIAN_FRONTEND=noninteractive apt-get -y \
         -o Dpkg::Options::="--force-confdef" \
@@ -533,7 +533,7 @@ phase_b_packages() {
 }
 
 phase_b_tailscale() {
-    echo "=== Phase B [2/9] Tailscale ==="
+    echo "=== Phase B [2/10] Tailscale ==="
     if ! command -v tailscale >/dev/null 2>&1; then
         curl -fsSL https://tailscale.com/install.sh | sh
     fi
@@ -553,7 +553,7 @@ phase_b_tailscale() {
 }
 
 phase_b_clone_repo() {
-    echo "=== Phase B [3/9] Repo klonen ==="
+    echo "=== Phase B [3/10] Repo klonen ==="
     until dig +short +time=2 +tries=1 @1.1.1.1 github.com >/dev/null; do
         echo "  warte auf DNS..."
         sleep 2
@@ -571,7 +571,7 @@ phase_b_clone_repo() {
 }
 
 phase_b_render_values_env() {
-    echo "=== Phase B [4/9] values.env rendern ==="
+    echo "=== Phase B [4/10] values.env rendern ==="
     mkdir -p "$CONFIG_DIR"
     local prio=100
     [[ "$NODE_ROLE" == "BACKUP" ]] && prio=90
@@ -599,7 +599,7 @@ EOF
 }
 
 phase_b_dh_and_default_cert() {
-    echo "=== Phase B [5/9] DH-Params + Default-Cert ==="
+    echo "=== Phase B [5/10] DH-Params + Default-Cert ==="
     mkdir -p /etc/nginx/ssl /var/www/letsencrypt
     if [[ ! -f /etc/nginx/ssl/dhparam.pem ]]; then
         openssl dhparam -out /etc/nginx/ssl/dhparam.pem 2048
@@ -613,7 +613,7 @@ phase_b_dh_and_default_cert() {
 }
 
 phase_b_ufw() {
-    echo "=== Phase B [6/9] Firewall ==="
+    echo "=== Phase B [6/10] Firewall ==="
     ufw default deny incoming  >/dev/null
     ufw default allow outgoing >/dev/null
     ufw allow OpenSSH          >/dev/null
@@ -625,7 +625,7 @@ phase_b_ufw() {
 }
 
 phase_b_keepalived_helpers() {
-    echo "=== Phase B [7/9] keepalived-Helpers + State-User + Cron + Sudoers ==="
+    echo "=== Phase B [7/10] keepalived-Helpers + State-User + Cron + Sudoers ==="
     install -m 0755 "$REPO_DIR/keepalived/check_nginx.sh"      /usr/local/bin/check_nginx.sh
     install -m 0755 "$REPO_DIR/keepalived/notify_keepalived.sh" /usr/local/bin/notify_keepalived.sh
 
@@ -660,7 +660,7 @@ phase_b_keepalived_helpers() {
 }
 
 phase_b_status_service() {
-    echo "=== Phase B [8/9] Status-Site (venv + systemd) ==="
+    echo "=== Phase B [8/10] Status-Site (venv + systemd) ==="
     if [[ ! -d "$REPO_DIR/status/venv" ]]; then
         python3 -m venv "$REPO_DIR/status/venv"
     fi
@@ -676,7 +676,7 @@ phase_b_status_service() {
 }
 
 phase_b_deploy_timer() {
-    echo "=== Phase B [9/9] Deploy-Timer + erstes Deploy ==="
+    echo "=== Phase B [9/10] Deploy-Timer + erstes Deploy ==="
     install -m 0644 "$REPO_DIR/systemd/proxy-deploy.service" /etc/systemd/system/proxy-deploy.service
     install -m 0644 "$REPO_DIR/systemd/proxy-deploy.timer"   /etc/systemd/system/proxy-deploy.timer
     systemctl daemon-reload
@@ -689,6 +689,31 @@ phase_b_deploy_timer() {
 
     systemctl enable --now nginx
     systemctl enable --now keepalived
+}
+
+phase_b_ops_hygiene() {
+    echo "=== Phase B [10/10] Ops-Hygiene (unattended-upgrades + logrotate) ==="
+
+    # Unattended-Upgrades (security-only) — überschreibt Distro-Defaults
+    install -m 0644 "$REPO_DIR/unattended-upgrades/50unattended-upgrades.conf" \
+                    /etc/apt/apt.conf.d/50unattended-upgrades
+    install -m 0644 "$REPO_DIR/unattended-upgrades/20auto-upgrades.conf" \
+                    /etc/apt/apt.conf.d/20auto-upgrades
+
+    # Smoke-Test: dry-run
+    if unattended-upgrade --dry-run -d >/dev/null 2>&1; then
+        echo "→ unattended-upgrade dry-run OK"
+    else
+        echo "WARN: unattended-upgrade dry-run schlug fehl — Konfig prüfen"
+    fi
+
+    # Logrotate für eigene Logs
+    install -m 0644 "$REPO_DIR/logrotate/proxy" /etc/logrotate.d/proxy
+    if logrotate -d /etc/logrotate.d/proxy >/dev/null 2>&1; then
+        echo "→ logrotate-Config OK"
+    else
+        echo "WARN: logrotate-Config-Test fehlgeschlagen"
+    fi
 }
 
 phase_b_finalize() {
@@ -712,6 +737,7 @@ phase_b() {
     phase_b_keepalived_helpers
     phase_b_status_service
     phase_b_deploy_timer
+    phase_b_ops_hygiene
     phase_b_finalize
 
     echo

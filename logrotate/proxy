@@ -1,0 +1,28 @@
+# /etc/logrotate.d/proxy
+# Eigene Logs des HA-Reverse-Proxy-Setups.
+# nginx-Logs werden vom Distro-Paket bereits unter /etc/logrotate.d/nginx rotiert.
+
+/var/log/proxy-bootstrap.log
+/var/log/proxy-deploy.log
+/var/log/cert-sync.log
+/var/log/keepalived-state.log
+{
+    weekly
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 root adm
+}
+
+/var/log/proxy-status/*.log {
+    weekly
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 proxy-status proxy-status
+    su proxy-status proxy-status
+}
