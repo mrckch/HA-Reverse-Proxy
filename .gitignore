@@ -1,0 +1,53 @@
+# Lokale Werte/Secrets — niemals committen
+values.env
+*.env
+!*.env.example
+
+# Zertifikate und Keys
+*.pem
+*.key
+*.crt
+*.csr
+
+# Gerenderte Configs (werden aus Templates erzeugt)
+nginx/sites-enabled/*.conf
+!nginx/sites-enabled/.gitkeep
+
+# Python (Statusseite)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+*.egg-info/
+
+# Logs
+*.log
+logs/
+
+# Status-Site Runtime-Daten (werden auf jeder Node generiert)
+status/static/system-status.json
+status/static/metrics-history.json
+/var/lib/proxy-status/
+
+# Bootstrap-Conf (enthält Secrets, lokal pro Node)
+proxy-bootstrap.conf
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Claude Code lokale User-Permissions (settings.json darf, settings.local.json nicht)
+.claude/settings.local.json
+
+# Ansible
+*.retry
+ansible/inventory/hosts
+ansible/group_vars/all/secrets.yml

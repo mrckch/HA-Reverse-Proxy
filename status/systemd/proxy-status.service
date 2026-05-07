@@ -1,0 +1,31 @@
+[Unit]
+Description=Reverse Proxy Status Page
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=proxy-status
+Group=proxy-status
+WorkingDirectory=/opt/reverse-proxy/status
+EnvironmentFile=/etc/proxy-config/values.env
+Environment=STATUS_PORT=8080
+ExecStart=/opt/reverse-proxy/status/venv/bin/gunicorn \
+    --bind ${STATUS_BIND_IP}:${STATUS_PORT} \
+    --workers 2 \
+    --access-logfile - \
+    --error-logfile - \
+    app:app
+Restart=on-failure
+RestartSec=5s
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/log/proxy-status
+ReadOnlyPaths=/etc/letsencrypt /etc/nginx /run /opt/reverse-proxy
+
+[Install]
+WantedBy=multi-user.target
