@@ -1,0 +1,66 @@
+{% extends "_base.html" %}
+{% block title %}Admin{% endblock %}
+
+{% block content %}
+<div class="grid">
+
+    <section class="card card-wide">
+        <h2>Konfiguration</h2>
+        <p class="muted">
+            Die Werte unten kommen aus <code>/etc/proxy-config/values.env</code> auf
+            dieser Node. Änderungen erfordern manuelles Editieren der Datei
+            (mit <code>sudo</code>) und einen <code>systemctl reload</code> bzw.
+            das nächste <code>deploy.sh</code>.
+        </p>
+        <table class="data-table" id="tbl-config">
+            <tbody>
+                <tr><td>Rolle</td><td><code id="cfg-role">—</code></td></tr>
+                <tr><td>Hostname</td><td><code>{{ node }}</code></td></tr>
+                <tr><td>Peer</td><td><code>{{ peer or '—' }}</code></td></tr>
+                <tr><td>Floating-IP</td><td><code>{{ floating_ip or '—' }}</code></td></tr>
+                <tr><td>Status-Bind</td><td><code id="cfg-bind">—</code></td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <section class="card">
+        <h2>Services</h2>
+        <table class="data-table" id="tbl-services">
+            <thead><tr><th>Service</th><th>Status</th></tr></thead>
+            <tbody>
+                <tr><td>nginx</td>      <td id="svc-nginx">—</td></tr>
+                <tr><td>keepalived</td> <td id="svc-keepalived">—</td></tr>
+                <tr><td>proxy-status</td><td id="svc-status">aktiv</td></tr>
+                <tr><td>proxy-deploy.timer</td><td id="svc-timer">—</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <section class="card">
+        <h2>Zertifikats-Übersicht</h2>
+        <div id="cert-summary" class="muted">Lade…</div>
+    </section>
+
+    <section class="card card-wide">
+        <h2>Letzte Status-Änderungen (keepalived)</h2>
+        <pre id="ka-log" class="log-pre muted">Lade…</pre>
+    </section>
+
+    <section class="card card-wide">
+        <h2>Hilfe & Links</h2>
+        <ul class="help-list">
+            <li><strong>Service hinzufügen:</strong> <code>nginx/sites-available/&lt;name&gt;.conf</code> committen, dann auf jeder Node <code>sudo /opt/reverse-proxy/scripts/enable-site.sh &lt;name&gt;</code></li>
+            <li><strong>Cert anfordern (nur MASTER):</strong> <code>sudo /opt/reverse-proxy/scripts/cert-request.sh &lt;domain&gt;</code></li>
+            <li><strong>Failover testen:</strong> <code>sudo systemctl stop nginx</code> auf dem MASTER — Floating-IP sollte in ~3s zum BACKUP wechseln</li>
+            <li><strong>Bootstrap erneut starten:</strong> <code>sudo /opt/reverse-proxy/scripts/bootstrap.sh</code> (idempotent)</li>
+            <li><strong>Deploy-Log:</strong> <code>tail -f /var/log/proxy-deploy.log</code></li>
+            <li><strong>Bootstrap-Log:</strong> <code>tail -f /var/log/proxy-bootstrap.log</code></li>
+        </ul>
+    </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='admin.js') }}"></script>
+{% endblock %}

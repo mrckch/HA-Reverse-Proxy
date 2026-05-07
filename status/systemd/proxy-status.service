@@ -20,12 +20,14 @@ Restart=on-failure
 RestartSec=5s
 
 # Hardening
-NoNewPrivileges=true
+# NoNewPrivileges MUSS false bleiben, weil Action-Endpoints sudo (setuid)
+# brauchen. Die Angriffsfläche ist über sudoers.d/proxy-status begrenzt.
+NoNewPrivileges=false
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ReadWritePaths=/var/log/proxy-status
-ReadOnlyPaths=/etc/letsencrypt /etc/nginx /run /opt/reverse-proxy
+ReadOnlyPaths=/etc/letsencrypt /etc/nginx /run /opt/reverse-proxy /var/lib/proxy-status
 
 [Install]
 WantedBy=multi-user.target

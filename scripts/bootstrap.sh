@@ -625,7 +625,7 @@ phase_b_ufw() {
 }
 
 phase_b_keepalived_helpers() {
-    echo "=== Phase B [7/9] keepalived-Helpers + State-User ==="
+    echo "=== Phase B [7/9] keepalived-Helpers + State-User + Cron + Sudoers ==="
     install -m 0755 "$REPO_DIR/keepalived/check_nginx.sh"      /usr/local/bin/check_nginx.sh
     install -m 0755 "$REPO_DIR/keepalived/notify_keepalived.sh" /usr/local/bin/notify_keepalived.sh
 
@@ -633,7 +633,30 @@ phase_b_keepalived_helpers() {
         useradd -r -s /usr/sbin/nologin -d "$REPO_DIR/status" proxy-status
     fi
     mkdir -p /var/log/proxy-status /var/lib/proxy-status
-    chown -R proxy-status:proxy-status /var/log/proxy-status /var/lib/proxy-status
+    # /var/log/proxy-status: Service schreibt rein
+    chown -R proxy-status:proxy-status /var/log/proxy-status
+    # /var/lib/proxy-status: cron schreibt (root), Service liest
+    chown root:proxy-status /var/lib/proxy-status
+    chmod 0750 /var/lib/proxy-status
+
+    # update-site-info.sh ausführbar machen
+    chmod 0755 "$REPO_DIR/scripts/update-site-info.sh"
+
+    # Cron-Job für 5-Min-Snapshots
+    install -m 0644 "$REPO_DIR/cron/proxy-status" /etc/cron.d/proxy-status
+
+    # Sudoers-Whitelist (visudo-validiert vor Install)
+    if visudo -c -f "$REPO_DIR/status/sudoers.d/proxy-status" >/dev/null; then
+        install -m 0440 "$REPO_DIR/status/sudoers.d/proxy-status" \
+                        /etc/sudoers.d/proxy-status
+    else
+        echo "FEHLER: sudoers.d/proxy-status ist syntaktisch ungültig!"
+        exit 1
+    fi
+
+    # Erste Snapshot-Sammlung jetzt (damit die UI nicht leer ist)
+    "$REPO_DIR/scripts/update-site-info.sh" || \
+        echo "WARN: erste Snapshot-Sammlung fehlgeschlagen — wird via cron erneut versucht"
 }
 
 phase_b_status_service() {

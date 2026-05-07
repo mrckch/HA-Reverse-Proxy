@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="60">
+    <title>{% block title %}{{ node }}{% endblock %} – HA-Proxy</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% block head_extra %}{% endblock %}
+</head>
+<body data-active-tab="{{ active_tab }}">
+    <header class="topbar">
+        <div class="topbar-brand">
+            <span class="brand-logo">⚡</span>
+            <span class="brand-title">HA-Reverse-Proxy</span>
+            <span class="badge badge-host">{{ node }}</span>
+            {% if role and role != 'UNKNOWN' %}
+            <span class="badge badge-role badge-role-{{ role|lower }}">{{ role }}</span>
+            {% endif %}
+        </div>
+        <nav class="topbar-nav">
+            <a href="/"      class="nav-tab {% if active_tab == 'status' %}active{% endif %}">Status</a>
+            <a href="/ops"   class="nav-tab {% if active_tab == 'ops'    %}active{% endif %}">Operations</a>
+            <a href="/admin" class="nav-tab {% if active_tab == 'admin'  %}active{% endif %}">Admin</a>
+        </nav>
+        <div class="topbar-right">
+            <span class="live-indicator" id="live-indicator" title="Auto-Refresh"></span>
+            <span class="last-update" id="last-update">—</span>
+        </div>
+    </header>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <span>Peer: {{ peer or '—' }}</span>
+        <span>Floating-IP: {{ floating_ip or '—' }}</span>
+        <span id="footer-version"></span>
+    </footer>
+
+    <script src="{{ url_for('static', filename='api.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

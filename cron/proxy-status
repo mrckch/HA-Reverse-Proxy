@@ -1,0 +1,8 @@
+# /etc/cron.d/proxy-status
+# Sammelt System-Snapshot + Metrics-History alle 5 Minuten.
+# Wird vom bootstrap.sh nach /etc/cron.d/ kopiert.
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+*/5 * * * * root /opt/reverse-proxy/scripts/update-site-info.sh >> /var/log/proxy-status/update.log 2>&1

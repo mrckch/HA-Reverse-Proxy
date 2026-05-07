@@ -1,307 +1,340 @@
 #!/usr/bin/env python3
 """
-Reverse-Proxy-Statusseite.
+HA-Reverse-Proxy Statusseite.
+
+Liest Snapshots aus /var/lib/proxy-status/ (von update-site-info.sh via cron
+alle 5 Minuten geschrieben). Bietet drei UI-Tabs (Status / Operations / Admin)
+und einen Action-Catalog für privilegierte Operationen via sudoers-Whitelist.
 
 Lauscht standardmäßig auf 127.0.0.1:8080 — wird in Produktion via systemd
 auf die Tailscale-IP gebunden (siehe systemd/proxy-status.service).
-
-Endpoints:
-  /                  HTML-Dashboard
-  /api/status.json   Vollständiger Status als JSON
-  /api/health        Simpler 200/503 Health-Check
 """
+
+from __future__ import annotations
 
 import json
 import os
-import re
 import socket
-import ssl
 import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
-import requests
 from flask import Flask, jsonify, render_template
 
 app = Flask(__name__)
 
-# === Konfiguration ===
-NODE_NAME = os.environ.get("NODE_NAME", socket.gethostname())
+# ============================================================================
+# Konfiguration
+# ============================================================================
+NODE_NAME = os.environ.get("NODE_NAME") or socket.gethostname()
+NODE_ROLE = os.environ.get("NODE_ROLE", "UNKNOWN")
 PEER_NAME = os.environ.get("PEER_NAME", "")
-PEER_URL = os.environ.get("PEER_STATUS_URL", "")  # z.B. http://proxy02:8080/api/status.json
-NGINX_CONFIG_DIR = Path(os.environ.get("NGINX_CONFIG_DIR", "/etc/nginx/sites-enabled"))
-LETSENCRYPT_LIVE = Path(os.environ.get("LETSENCRYPT_LIVE", "/etc/letsencrypt/live"))
-KEEPALIVED_STATE_FILE = Path("/run/keepalived-state")
-GIT_REPO_DIR = Path(os.environ.get("GIT_REPO_DIR", "/opt/reverse-proxy"))
-NGINX_STATUS_URL = "http://127.0.0.1:8081/nginx_status"
-HEALTHCHECK_FILE = Path("/run/proxy-healthcheck.json")
+FLOATING_IP = os.environ.get("FLOATING_IP", "")
+
+DATA_DIR = Path(os.environ.get("STATUS_DATA_DIR", "/var/lib/proxy-status"))
+STATUS_FILE = DATA_DIR / "system-status.json"
+HISTORY_FILE = DATA_DIR / "metrics-history.json"
+KA_LOG = Path("/var/log/keepalived-state.log")
+
+STALE_AFTER = 600  # Sekunden — danach gilt der Snapshot als veraltet
+
+# ============================================================================
+# Action-Catalog
+# Befehle laufen via sudo. /etc/sudoers.d/proxy-status definiert die
+# NOPASSWD-Whitelist. Niemals user-input direkt einbauen — nur ID-Lookup.
+# ============================================================================
+ACTIONS: list[dict[str, Any]] = [
+    {
+        "id": "nginx-test",
+        "label": "nginx-Config testen",
+        "category": "Services",
+        "description": "Syntax + Semantik der nginx-Config prüfen.",
+        "cmd": ["/usr/bin/sudo", "/usr/sbin/nginx", "-t"],
+        "timeout": 10,
+    },
+    {
+        "id": "nginx-reload",
+        "label": "nginx neu laden",
+        "category": "Services",
+        "description": "Config-Reload ohne Down-Time.",
+        "cmd": ["/usr/bin/sudo", "/bin/systemctl", "reload", "nginx"],
+        "timeout": 15,
+    },
+    {
+        "id": "keepalived-reload",
+        "label": "keepalived neu laden",
+        "category": "Services",
+        "description": "VRRP-Konfiguration neu einlesen.",
+        "cmd": ["/usr/bin/sudo", "/bin/systemctl", "reload", "keepalived"],
+        "timeout": 15,
+    },
+    {
+        "id": "git-pull-deploy",
+        "label": "Repo pullen + deployen",
+        "category": "Deployment",
+        "description": "deploy.sh ausführen (git pull + rsync + nginx reload).",
+        "cmd": ["/usr/bin/sudo", "/opt/reverse-proxy/scripts/deploy.sh"],
+        "timeout": 90,
+    },
+    {
+        "id": "status-refresh",
+        "label": "Status sofort sammeln",
+        "category": "Deployment",
+        "description": "update-site-info.sh manuell ausführen.",
+        "cmd": ["/usr/bin/sudo", "/opt/reverse-proxy/scripts/update-site-info.sh"],
+        "timeout": 30,
+    },
+    {
+        "id": "cert-list",
+        "label": "Zertifikate auflisten",
+        "category": "Zertifikate",
+        "description": "Alle Let's-Encrypt-Zertifikate inkl. Ablauf anzeigen.",
+        "cmd": ["/usr/bin/sudo", "/usr/bin/certbot", "certificates"],
+        "timeout": 30,
+    },
+    {
+        "id": "cert-renew",
+        "label": "Zertifikate erneuern (wenn fällig)",
+        "category": "Zertifikate",
+        "description": "certbot renew — nur Certs <30 Tage Restlaufzeit.",
+        "cmd": ["/usr/bin/sudo", "/usr/bin/certbot", "renew", "--quiet"],
+        "timeout": 300,
+    },
+    {
+        "id": "apt-update",
+        "label": "apt update",
+        "category": "System",
+        "description": "Paket-Listen aktualisieren (kein Upgrade).",
+        "cmd": ["/usr/bin/sudo", "/usr/bin/apt-get", "update"],
+        "timeout": 120,
+    },
+    {
+        "id": "security-upgrades-dry",
+        "label": "Security-Updates: Dry-Run",
+        "category": "System",
+        "description": "Zeigt was unattended-upgrade installieren würde.",
+        "cmd": ["/usr/bin/sudo", "/usr/bin/unattended-upgrade", "--dry-run", "-d"],
+        "timeout": 60,
+    },
+    {
+        "id": "security-upgrades",
+        "label": "Security-Updates installieren",
+        "category": "System",
+        "description": "unattended-upgrade JETZT ausführen.",
+        "cmd": ["/usr/bin/sudo", "/usr/bin/unattended-upgrade", "-d"],
+        "timeout": 600,
+        "danger": True,
+        "confirm": "Security-Updates jetzt installieren? "
+                   "Eventuell sind danach Reboots oder Service-Restarts nötig.",
+    },
+    {
+        "id": "vm-reboot",
+        "label": "VM neu starten",
+        "category": "Gefährlich",
+        "description": "Reboot dieser Node. Bei MASTER übernimmt BACKUP automatisch.",
+        "cmd": ["/usr/bin/sudo", "/sbin/reboot"],
+        "timeout": 5,
+        "danger": True,
+        "confirm": "DIESE Node JETZT neu starten? "
+                   "Bei korrekt konfiguriertem keepalived übernimmt der Peer "
+                   "automatisch die Floating-IP innerhalb von ~3 Sekunden.",
+    },
+]
+
+ACTIONS_BY_ID = {a["id"]: a for a in ACTIONS}
 
 
-# === Helpers ===
-def run(cmd, timeout=5):
-    """Shell-Command ausführen und Stdout zurückgeben."""
+# ============================================================================
+# Helpers
+# ============================================================================
+def _read_json(path: Path) -> Any:
     try:
-        r = subprocess.run(
-            cmd, shell=isinstance(cmd, str), capture_output=True,
-            text=True, timeout=timeout
-        )
-        return r.stdout.strip(), r.returncode
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        return "", 1
+        with path.open("r") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
-def get_uptime():
+def _file_age_seconds(path: Path) -> float | None:
     try:
-        with open("/proc/uptime") as f:
-            return float(f.read().split()[0])
+        return time.time() - path.stat().st_mtime
     except OSError:
-        return 0
+        return None
 
 
-def get_load():
-    try:
-        with open("/proc/loadavg") as f:
-            parts = f.read().split()
-            return [float(parts[0]), float(parts[1]), float(parts[2])]
-    except OSError:
-        return [0, 0, 0]
+def _load_snapshot() -> dict[str, Any]:
+    data = _read_json(STATUS_FILE)
+    if isinstance(data, dict):
+        age = _file_age_seconds(STATUS_FILE)
+        data["_age_seconds"] = age
+        data["_stale"] = (age is not None and age > STALE_AFTER)
+        return data
 
-
-def get_memory():
-    info = {}
-    try:
-        with open("/proc/meminfo") as f:
-            for line in f:
-                key, val = line.split(":")
-                info[key.strip()] = int(val.strip().split()[0])  # in kB
-    except OSError:
-        return {}
-    total = info.get("MemTotal", 0)
-    available = info.get("MemAvailable", 0)
-    used = total - available
-    return {
-        "total_mb": total // 1024,
-        "used_mb": used // 1024,
-        "available_mb": available // 1024,
-        "percent": round(used / total * 100, 1) if total else 0,
-    }
-
-
-def get_disk(path="/"):
-    s = os.statvfs(path)
-    total = s.f_blocks * s.f_frsize
-    free = s.f_bavail * s.f_frsize
-    used = total - free
-    return {
-        "total_gb": round(total / 1024**3, 1),
-        "used_gb": round(used / 1024**3, 1),
-        "free_gb": round(free / 1024**3, 1),
-        "percent": round(used / total * 100, 1) if total else 0,
-    }
-
-
-def get_keepalived_state():
-    state = "UNKNOWN"
-    ts = None
-    if KEEPALIVED_STATE_FILE.exists():
-        state = KEEPALIVED_STATE_FILE.read_text().strip()
-        ts_file = Path(str(KEEPALIVED_STATE_FILE) + ".timestamp")
-        if ts_file.exists():
-            ts = ts_file.read_text().strip()
-    out, rc = run("systemctl is-active keepalived")
-    return {
-        "state": state,
-        "since": ts,
-        "service_active": out == "active",
-    }
-
-
-def get_nginx_status():
-    out, rc = run("systemctl is-active nginx")
-    active = out == "active"
-    metrics = {}
-    if active:
-        try:
-            r = requests.get(NGINX_STATUS_URL, timeout=2)
-            if r.ok:
-                # Format:
-                # Active connections: 5
-                # server accepts handled requests
-                #  100 100 200
-                # Reading: 0 Writing: 1 Waiting: 4
-                lines = r.text.splitlines()
-                m = re.search(r"Active connections:\s+(\d+)", r.text)
-                if m:
-                    metrics["active"] = int(m.group(1))
-                if len(lines) >= 3:
-                    parts = lines[2].split()
-                    if len(parts) >= 3:
-                        metrics["accepts"] = int(parts[0])
-                        metrics["handled"] = int(parts[1])
-                        metrics["requests"] = int(parts[2])
-                m = re.search(r"Reading:\s+(\d+)\s+Writing:\s+(\d+)\s+Waiting:\s+(\d+)", r.text)
-                if m:
-                    metrics["reading"] = int(m.group(1))
-                    metrics["writing"] = int(m.group(2))
-                    metrics["waiting"] = int(m.group(3))
-        except requests.RequestException:
-            pass
-    version, _ = run("nginx -v 2>&1")
-    return {
-        "active": active,
-        "version": version.replace("nginx version: ", ""),
-        "metrics": metrics,
-    }
-
-
-def get_certificates():
-    """Ablaufdatum jedes Let's-Encrypt-Zertifikats."""
-    certs = []
-    if not LETSENCRYPT_LIVE.exists():
-        return certs
-    for domain_dir in sorted(LETSENCRYPT_LIVE.iterdir()):
-        if not domain_dir.is_dir():
-            continue
-        cert_path = domain_dir / "cert.pem"
-        if not cert_path.exists():
-            continue
-        try:
-            out, _ = run(f"openssl x509 -in {cert_path} -noout -enddate")
-            # Format: notAfter=May 14 12:00:00 2026 GMT
-            if out.startswith("notAfter="):
-                date_str = out.split("=", 1)[1]
-                expiry = datetime.strptime(date_str, "%b %d %H:%M:%S %Y %Z")
-                expiry = expiry.replace(tzinfo=timezone.utc)
-                days_left = (expiry - datetime.now(timezone.utc)).days
-                certs.append({
-                    "domain": domain_dir.name,
-                    "expires": expiry.isoformat(),
-                    "days_left": days_left,
-                    "warning": days_left < 30,
-                    "critical": days_left < 14,
-                })
-        except (ValueError, OSError):
-            continue
-    return certs
-
-
-def get_backends():
-    """Liest sites-enabled aus, extrahiert proxy_pass und checkt sie."""
-    backends = []
-    if not NGINX_CONFIG_DIR.exists():
-        return backends
-    for conf in sorted(NGINX_CONFIG_DIR.glob("*.conf")):
-        try:
-            text = conf.read_text()
-        except OSError:
-            continue
-        # server_name
-        names = re.findall(r"server_name\s+([^;]+);", text)
-        domains = []
-        for n in names:
-            for d in n.split():
-                if d not in ("_", "default_server"):
-                    domains.append(d)
-        # proxy_pass-Targets
-        targets = re.findall(r"proxy_pass\s+https?://([^;/\s]+)", text)
-        targets = list(dict.fromkeys(targets))  # uniq, Reihenfolge
-        for target in targets:
-            status = check_backend(target)
-            backends.append({
-                "service": conf.stem,
-                "domains": domains[:3],  # nur erste 3
-                "backend": target,
-                "reachable": status["reachable"],
-                "latency_ms": status["latency_ms"],
-            })
-    return backends
-
-
-def check_backend(target):
-    """TCP-Connect-Test auf host:port."""
-    if ":" in target:
-        host, port = target.rsplit(":", 1)
-        try:
-            port = int(port)
-        except ValueError:
-            return {"reachable": False, "latency_ms": None}
-    else:
-        host, port = target, 80
-    start = time.time()
-    try:
-        with socket.create_connection((host, port), timeout=2):
-            return {"reachable": True, "latency_ms": round((time.time() - start) * 1000, 1)}
-    except (socket.error, OSError):
-        return {"reachable": False, "latency_ms": None}
-
-
-def get_git_status():
-    info = {"available": False}
-    if not GIT_REPO_DIR.exists():
-        return info
-    info["available"] = True
-    out, _ = run(f"git -C {GIT_REPO_DIR} rev-parse --short HEAD")
-    info["commit"] = out
-    out, _ = run(f"git -C {GIT_REPO_DIR} log -1 --format=%cd --date=iso")
-    info["commit_date"] = out
-    out, _ = run(f"git -C {GIT_REPO_DIR} log -1 --format=%s")
-    info["commit_message"] = out
-    out, _ = run(f"git -C {GIT_REPO_DIR} status --porcelain")
-    info["clean"] = (out == "")
-    return info
-
-
-def get_peer_status():
-    """Statusseite des Peers abfragen (für Cluster-Übersicht)."""
-    if not PEER_URL:
-        return {"available": False}
-    try:
-        r = requests.get(PEER_URL, timeout=3)
-        if r.ok:
-            return {"available": True, "data": r.json()}
-    except requests.RequestException:
-        pass
-    return {"available": False}
-
-
-def collect_status():
+    # Fallback: noch nichts gesammelt
     return {
         "node": NODE_NAME,
+        "role": NODE_ROLE,
+        "peer_name": PEER_NAME,
+        "floating_ip": FLOATING_IP,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "uptime_seconds": get_uptime(),
-        "load": get_load(),
-        "memory": get_memory(),
-        "disk": get_disk(),
-        "keepalived": get_keepalived_state(),
-        "nginx": get_nginx_status(),
-        "certificates": get_certificates(),
-        "backends": get_backends(),
-        "git": get_git_status(),
-        "peer": get_peer_status(),
+        "uptime_seconds": 0,
+        "load": [0, 0, 0],
+        "memory": {"total_mb": 0, "used_mb": 0, "available_mb": 0, "percent": 0},
+        "disk": {"total_gb": 0, "used_gb": 0, "free_gb": 0, "percent": 0},
+        "keepalived": {"state": "UNKNOWN", "since": "", "service_active": False},
+        "nginx": {"active": False, "version": "", "active_connections": 0,
+                  "accepts": 0, "handled": 0, "requests": 0,
+                  "reading": 0, "writing": 0, "waiting": 0},
+        "certificates": [],
+        "backends": [],
+        "git": {"available": False, "commit": "", "commit_date": "",
+                "commit_message": "", "clean": True},
+        "peer": {"available": False, "data": None},
+        "_age_seconds": None,
+        "_stale": True,
+        "_warning": "Noch kein Snapshot — update-site-info.sh wurde noch nicht ausgeführt.",
     }
 
 
-# === Routes ===
+def _systemctl_state(unit: str) -> str:
+    try:
+        r = subprocess.run(
+            ["/bin/systemctl", "is-active", unit],
+            capture_output=True, text=True, timeout=3, check=False,
+        )
+        return r.stdout.strip() or "unknown"
+    except (subprocess.SubprocessError, FileNotFoundError):
+        return "unknown"
+
+
+def _run_action(action: dict[str, Any]) -> dict[str, Any]:
+    cmd: list[str] = action["cmd"]
+    timeout: int = action.get("timeout", 30)
+    started = time.time()
+    base = {
+        "cmd_display": " ".join(cmd),
+        "finished_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           timeout=timeout, check=False)
+        return {**base,
+                "exit_code": r.returncode,
+                "stdout": r.stdout,
+                "stderr": r.stderr,
+                "duration_ms": int((time.time() - started) * 1000)}
+    except subprocess.TimeoutExpired as e:
+        return {**base,
+                "exit_code": 124,
+                "stdout": e.stdout or "",
+                "stderr": (e.stderr or "") + f"\n[TIMEOUT nach {timeout}s]",
+                "duration_ms": int((time.time() - started) * 1000)}
+    except FileNotFoundError as e:
+        return {**base,
+                "exit_code": 127,
+                "stdout": "",
+                "stderr": f"Befehl nicht gefunden: {e}",
+                "duration_ms": int((time.time() - started) * 1000)}
+
+
+def _common_ctx(active_tab: str) -> dict[str, Any]:
+    return {
+        "node": NODE_NAME,
+        "role": NODE_ROLE,
+        "peer": PEER_NAME,
+        "floating_ip": FLOATING_IP,
+        "active_tab": active_tab,
+    }
+
+
+# ============================================================================
+# UI-Routes
+# ============================================================================
 @app.route("/")
-def index():
-    return render_template("status.html", node=NODE_NAME, peer=PEER_NAME)
+def page_status():
+    return render_template("status.html", **_common_ctx("status"))
 
 
+@app.route("/ops")
+def page_ops():
+    return render_template("ops.html", **_common_ctx("ops"))
+
+
+@app.route("/admin")
+def page_admin():
+    return render_template("admin.html", **_common_ctx("admin"))
+
+
+# ============================================================================
+# JSON-API
+# ============================================================================
 @app.route("/api/status.json")
-def status_json():
-    return jsonify(collect_status())
+def api_status():
+    return jsonify(_load_snapshot())
+
+
+@app.route("/api/history.json")
+def api_history():
+    data = _read_json(HISTORY_FILE) or {
+        "interval_seconds": 300,
+        "max_points": 288,
+        "ts": [], "load1": [], "mem_pct": [],
+        "disk_pct": [], "active_conns": [], "req_rate": [],
+    }
+    if isinstance(data, dict):
+        data.pop("_last_reqs", None)
+        data.pop("_last_ts", None)
+    return jsonify(data)
 
 
 @app.route("/api/health")
-def health():
-    nginx = get_nginx_status()
-    if nginx["active"]:
+def api_health():
+    state = _systemctl_state("nginx")
+    if state == "active":
         return "OK", 200
-    return "FAIL", 503
+    return f"FAIL ({state})", 503
 
 
+@app.route("/api/services")
+def api_services():
+    units = ["nginx", "keepalived", "proxy-status", "proxy-deploy.timer"]
+    return jsonify({u: _systemctl_state(u) for u in units})
+
+
+@app.route("/api/keepalived-log")
+def api_keepalived_log():
+    lines: list[str] = []
+    try:
+        with KA_LOG.open("r") as f:
+            lines = f.readlines()[-30:]
+    except OSError:
+        pass
+    return jsonify({"lines": [line.rstrip("\n") for line in lines]})
+
+
+@app.route("/api/actions", methods=["GET"])
+def api_actions_list():
+    visible = [
+        {k: v for k, v in a.items() if k != "cmd"}
+        for a in ACTIONS
+    ]
+    return jsonify({"actions": visible})
+
+
+@app.route("/api/actions/<action_id>", methods=["POST"])
+def api_actions_run(action_id: str):
+    action = ACTIONS_BY_ID.get(action_id)
+    if not action:
+        return jsonify({"error": f"Unbekannte Aktion: {action_id}"}), 404
+    return jsonify(_run_action(action))
+
+
+# ============================================================================
+# Main (nur fürs Direkt-Aufrufen, in Prod läuft gunicorn)
+# ============================================================================
 if __name__ == "__main__":
-    bind = os.environ.get("STATUS_BIND", "127.0.0.1")
+    bind = os.environ.get("STATUS_BIND_IP", "127.0.0.1")
     port = int(os.environ.get("STATUS_PORT", "8080"))
     app.run(host=bind, port=port, debug=False)

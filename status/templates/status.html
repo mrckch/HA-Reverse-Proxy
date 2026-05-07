@@ -1,252 +1,98 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reverse Proxy Status — {{ node }}</title>
-    <style>
-        :root {
-            --bg: #0f172a;
-            --card: #1e293b;
-            --card2: #334155;
-            --text: #e2e8f0;
-            --muted: #94a3b8;
-            --green: #22c55e;
-            --yellow: #eab308;
-            --red: #ef4444;
-            --border: #475569;
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            line-height: 1.5;
-            padding: 1.5rem;
-        }
-        h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
-        h2 { font-size: 1.1rem; margin-bottom: 0.75rem; color: var(--muted); font-weight: 500; }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: baseline;
-            margin-bottom: 1.5rem;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-        }
-        .updated { color: var(--muted); font-size: 0.85rem; }
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 1rem;
-            margin-bottom: 1rem;
-        }
-        .card {
-            background: var(--card);
-            border-radius: 8px;
-            padding: 1rem;
-            border: 1px solid var(--border);
-        }
-        .row {
-            display: flex;
-            justify-content: space-between;
-            padding: 0.4rem 0;
-            border-bottom: 1px solid var(--card2);
-            font-size: 0.9rem;
-        }
-        .row:last-child { border-bottom: none; }
-        .row .label { color: var(--muted); }
-        .row .value { font-family: ui-monospace, monospace; }
-        .badge {
-            display: inline-block;
-            padding: 0.15rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-        .badge-ok    { background: rgba(34,197,94,0.2);  color: var(--green); }
-        .badge-warn  { background: rgba(234,179,8,0.2);  color: var(--yellow); }
-        .badge-fail  { background: rgba(239,68,68,0.2);  color: var(--red); }
-        .badge-info  { background: rgba(148,163,184,0.2); color: var(--muted); }
-        .bar {
-            background: var(--card2);
-            height: 6px;
-            border-radius: 3px;
-            overflow: hidden;
-            margin-top: 0.25rem;
-        }
-        .bar-fill { height: 100%; background: var(--green); }
-        .bar-fill.warn { background: var(--yellow); }
-        .bar-fill.crit { background: var(--red); }
-        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-        th, td {
-            text-align: left;
-            padding: 0.4rem 0.5rem;
-            border-bottom: 1px solid var(--card2);
-        }
-        th { color: var(--muted); font-weight: 500; font-size: 0.75rem; text-transform: uppercase; }
-        td.mono { font-family: ui-monospace, monospace; font-size: 0.8rem; }
-        .full { grid-column: 1 / -1; }
-        .err { color: var(--red); }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div>
-            <h1>{{ node }}</h1>
-            <h2>Reverse Proxy Status</h2>
+{% extends "_base.html" %}
+{% block title %}Status{% endblock %}
+
+{% block content %}
+<div class="grid">
+
+    <!-- Cluster-Übersicht -->
+    <section class="card card-wide">
+        <h2>Cluster</h2>
+        <div class="cluster-row">
+            <div class="cluster-node" id="cluster-self">
+                <div class="cluster-name">{{ node }}</div>
+                <div class="cluster-state" id="self-state">…</div>
+                <div class="cluster-meta">diese Node</div>
+            </div>
+            <div class="cluster-link"><span class="vrrp-arrow">VRRP</span></div>
+            <div class="cluster-node" id="cluster-peer">
+                <div class="cluster-name">{{ peer or '—' }}</div>
+                <div class="cluster-state" id="peer-state">—</div>
+                <div class="cluster-meta">Peer</div>
+            </div>
         </div>
-        <div class="updated" id="updated">lädt …</div>
-    </div>
+    </section>
 
-    <div class="grid" id="grid"></div>
+    <!-- System-Metriken mit Sparklines -->
+    <section class="card">
+        <h2>Last (1 min)</h2>
+        <div class="metric-big" id="m-load">—</div>
+        <svg class="sparkline" data-series="load1" viewBox="0 0 200 40" preserveAspectRatio="none"></svg>
+    </section>
 
-    <script>
-        const fmtUptime = s => {
-            const d = Math.floor(s / 86400);
-            const h = Math.floor((s % 86400) / 3600);
-            const m = Math.floor((s % 3600) / 60);
-            return `${d}d ${h}h ${m}m`;
-        };
+    <section class="card">
+        <h2>Memory</h2>
+        <div class="metric-big" id="m-mem">—</div>
+        <div class="progress"><div class="progress-bar" id="bar-mem"></div></div>
+        <svg class="sparkline" data-series="mem_pct" viewBox="0 0 200 40" preserveAspectRatio="none"></svg>
+    </section>
 
-        const badge = (text, kind) => `<span class="badge badge-${kind}">${text}</span>`;
+    <section class="card">
+        <h2>Disk /</h2>
+        <div class="metric-big" id="m-disk">—</div>
+        <div class="progress"><div class="progress-bar" id="bar-disk"></div></div>
+        <svg class="sparkline" data-series="disk_pct" viewBox="0 0 200 40" preserveAspectRatio="none"></svg>
+    </section>
 
-        const bar = (pct) => {
-            const cls = pct > 90 ? "crit" : pct > 75 ? "warn" : "";
-            return `<div class="bar"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>`;
-        };
+    <section class="card">
+        <h2>nginx Connections</h2>
+        <div class="metric-big" id="m-conns">—</div>
+        <svg class="sparkline" data-series="active_conns" viewBox="0 0 200 40" preserveAspectRatio="none"></svg>
+    </section>
 
-        async function load() {
-            try {
-                const r = await fetch("/api/status.json");
-                const d = await r.json();
-                render(d);
-                document.getElementById("updated").textContent =
-                    "aktualisiert: " + new Date(d.timestamp).toLocaleString("de-DE");
-            } catch (e) {
-                document.getElementById("updated").innerHTML =
-                    `<span class="err">Fehler beim Laden: ${e.message}</span>`;
-            }
-        }
+    <section class="card">
+        <h2>Requests/s</h2>
+        <div class="metric-big" id="m-rate">—</div>
+        <svg class="sparkline" data-series="req_rate" viewBox="0 0 200 40" preserveAspectRatio="none"></svg>
+    </section>
 
-        function render(d) {
-            const cards = [];
+    <section class="card">
+        <h2>Uptime</h2>
+        <div class="metric-big" id="m-uptime">—</div>
+        <div class="metric-sub" id="m-version">nginx: …</div>
+    </section>
 
-            // Node-Rolle
-            const ka = d.keepalived;
-            const role = ka.state || "?";
-            const roleBadge = role === "MASTER" ? badge("MASTER", "ok") :
-                              role === "BACKUP" ? badge("BACKUP", "info") :
-                              role === "FAULT"  ? badge("FAULT",  "fail") :
-                                                   badge(role,    "info");
-            cards.push(`<div class="card">
-                <h2>Cluster-Rolle</h2>
-                <div class="row"><span class="label">State</span><span>${roleBadge}</span></div>
-                <div class="row"><span class="label">keepalived</span><span>${ka.service_active ? badge("aktiv","ok") : badge("inaktiv","fail")}</span></div>
-                <div class="row"><span class="label">Letzter Wechsel</span><span class="value">${ka.since || "—"}</span></div>
-            </div>`);
+    <!-- Zertifikate -->
+    <section class="card card-wide">
+        <h2>Zertifikate</h2>
+        <table class="data-table" id="tbl-certs">
+            <thead><tr><th>Domain</th><th>Ablauf</th><th>Tage</th><th></th></tr></thead>
+            <tbody><tr><td colspan="4" class="muted">Lade…</td></tr></tbody>
+        </table>
+    </section>
 
-            // nginx
-            const ng = d.nginx;
-            const m = ng.metrics || {};
-            cards.push(`<div class="card">
-                <h2>nginx</h2>
-                <div class="row"><span class="label">Status</span><span>${ng.active ? badge("aktiv","ok") : badge("inaktiv","fail")}</span></div>
-                <div class="row"><span class="label">Version</span><span class="value">${ng.version || "?"}</span></div>
-                <div class="row"><span class="label">Aktive Connections</span><span class="value">${m.active ?? "—"}</span></div>
-                <div class="row"><span class="label">Requests gesamt</span><span class="value">${m.requests ?? "—"}</span></div>
-                <div class="row"><span class="label">R/W/Wait</span><span class="value">${m.reading ?? "?"} / ${m.writing ?? "?"} / ${m.waiting ?? "?"}</span></div>
-            </div>`);
+    <!-- Backends -->
+    <section class="card card-wide">
+        <h2>Backends</h2>
+        <table class="data-table" id="tbl-backends">
+            <thead><tr><th>Service</th><th>Domains</th><th>Backend</th><th>Latenz</th><th>Status</th></tr></thead>
+            <tbody><tr><td colspan="5" class="muted">Lade…</td></tr></tbody>
+        </table>
+    </section>
 
-            // System
-            cards.push(`<div class="card">
-                <h2>System</h2>
-                <div class="row"><span class="label">Uptime</span><span class="value">${fmtUptime(d.uptime_seconds)}</span></div>
-                <div class="row"><span class="label">Load (1/5/15)</span><span class="value">${d.load.map(x=>x.toFixed(2)).join(" / ")}</span></div>
-                <div class="row"><span class="label">RAM</span><span class="value">${d.memory.used_mb} / ${d.memory.total_mb} MB (${d.memory.percent}%)</span></div>
-                ${bar(d.memory.percent)}
-                <div class="row"><span class="label">Disk /</span><span class="value">${d.disk.used_gb} / ${d.disk.total_gb} GB (${d.disk.percent}%)</span></div>
-                ${bar(d.disk.percent)}
-            </div>`);
+    <!-- Git-Status -->
+    <section class="card card-wide">
+        <h2>Repository</h2>
+        <div class="git-info">
+            <div><span class="muted">Commit:</span> <code id="git-commit">—</code></div>
+            <div><span class="muted">Datum:</span>  <span id="git-date">—</span></div>
+            <div><span class="muted">Message:</span> <span id="git-msg">—</span></div>
+            <div><span class="muted">Clean:</span>  <span id="git-clean">—</span></div>
+        </div>
+    </section>
 
-            // Git
-            const g = d.git;
-            cards.push(`<div class="card">
-                <h2>Deployment</h2>
-                ${g.available ? `
-                    <div class="row"><span class="label">Commit</span><span class="value">${g.commit}</span></div>
-                    <div class="row"><span class="label">Datum</span><span class="value">${g.commit_date}</span></div>
-                    <div class="row"><span class="label">Message</span><span class="value">${g.commit_message}</span></div>
-                    <div class="row"><span class="label">Working Tree</span><span>${g.clean ? badge("clean","ok") : badge("dirty","warn")}</span></div>
-                ` : `<div class="row"><span class="label">Status</span><span>${badge("Repo nicht gefunden","fail")}</span></div>`}
-            </div>`);
+</div>
+{% endblock %}
 
-            // Zertifikate
-            let certRows = d.certificates.map(c => {
-                const b = c.critical ? badge(`${c.days_left}d`,"fail")
-                       : c.warning  ? badge(`${c.days_left}d`,"warn")
-                                    : badge(`${c.days_left}d`,"ok");
-                return `<tr>
-                    <td>${c.domain}</td>
-                    <td>${b}</td>
-                    <td class="mono">${c.expires.split("T")[0]}</td>
-                </tr>`;
-            }).join("");
-            cards.push(`<div class="card full">
-                <h2>Zertifikate (${d.certificates.length})</h2>
-                <table>
-                    <thead><tr><th>Domain</th><th>Restlaufzeit</th><th>Läuft ab</th></tr></thead>
-                    <tbody>${certRows || '<tr><td colspan="3" class="err">Keine Zertifikate gefunden</td></tr>'}</tbody>
-                </table>
-            </div>`);
-
-            // Backends
-            let beRows = d.backends.map(b => {
-                const status = b.reachable ? badge("erreichbar","ok") : badge("offline","fail");
-                const latency = b.latency_ms !== null ? `${b.latency_ms} ms` : "—";
-                return `<tr>
-                    <td>${b.service}</td>
-                    <td class="mono">${b.domains.join(", ")}</td>
-                    <td class="mono">${b.backend}</td>
-                    <td>${status}</td>
-                    <td class="mono">${latency}</td>
-                </tr>`;
-            }).join("");
-            cards.push(`<div class="card full">
-                <h2>Backends (${d.backends.length})</h2>
-                <table>
-                    <thead><tr><th>Service</th><th>Domains</th><th>Backend</th><th>Status</th><th>Latenz</th></tr></thead>
-                    <tbody>${beRows || '<tr><td colspan="5" class="err">Keine Backends konfiguriert</td></tr>'}</tbody>
-                </table>
-            </div>`);
-
-            // Peer
-            if (d.peer.available && d.peer.data) {
-                const p = d.peer.data;
-                const pka = p.keepalived;
-                const proleBadge = pka.state === "MASTER" ? badge("MASTER","ok")
-                                : pka.state === "BACKUP" ? badge("BACKUP","info")
-                                                          : badge(pka.state,"fail");
-                cards.push(`<div class="card full">
-                    <h2>Peer: ${p.node}</h2>
-                    <div class="row"><span class="label">Rolle</span><span>${proleBadge}</span></div>
-                    <div class="row"><span class="label">nginx</span><span>${p.nginx.active ? badge("aktiv","ok") : badge("inaktiv","fail")}</span></div>
-                    <div class="row"><span class="label">Uptime</span><span class="value">${fmtUptime(p.uptime_seconds)}</span></div>
-                    <div class="row"><span class="label">Commit</span><span class="value">${p.git.commit || "?"}</span></div>
-                </div>`);
-            } else {
-                cards.push(`<div class="card full">
-                    <h2>Peer</h2>
-                    <div class="row"><span class="label">Status</span><span>${badge("nicht erreichbar","warn")}</span></div>
-                </div>`);
-            }
-
-            document.getElementById("grid").innerHTML = cards.join("");
-        }
-
-        load();
-        setInterval(load, 10000);  // alle 10 Sekunden
-    </script>
-</body>
-</html>
+{% block scripts %}
+<script src="{{ url_for('static', filename='status.js') }}"></script>
+{% endblock %}

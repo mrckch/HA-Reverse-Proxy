@@ -1,0 +1,21 @@
+# /etc/sudoers.d/proxy-status
+# Whitelist: nur diese Befehle darf der proxy-status User per sudo ohne Passwort ausführen.
+# Wird vom bootstrap.sh installiert. Datei MUSS mode 0440 haben (visudo-validiert).
+
+Defaults!PROXY_OPS env_keep += "DEBIAN_FRONTEND"
+
+Cmnd_Alias PROXY_OPS = \
+    /bin/systemctl reload nginx, \
+    /bin/systemctl reload keepalived, \
+    /bin/systemctl restart proxy-status, \
+    /usr/sbin/nginx -t, \
+    /opt/reverse-proxy/scripts/deploy.sh, \
+    /opt/reverse-proxy/scripts/update-site-info.sh, \
+    /usr/bin/certbot renew --quiet, \
+    /usr/bin/certbot certificates, \
+    /usr/bin/apt-get update, \
+    /usr/bin/unattended-upgrade --dry-run -d, \
+    /usr/bin/unattended-upgrade -d, \
+    /sbin/reboot
+
+proxy-status ALL=(root) NOPASSWD: PROXY_OPS

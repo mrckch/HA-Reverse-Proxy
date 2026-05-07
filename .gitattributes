@@ -22,6 +22,10 @@ Makefile    text eol=lf
 .gitignore  text eol=lf
 .gitattributes text eol=lf
 
+# Konfig-Dateien ohne Endung (cron, sudoers): LF erzwingen
+cron/*               text eol=lf
+**/sudoers.d/*       text eol=lf
+
 # Binärdateien explizit markieren
 *.pem       binary
 *.key       binary
