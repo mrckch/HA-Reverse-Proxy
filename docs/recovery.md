@@ -51,7 +51,8 @@ Häufige Ursachen:
 
 VM komplett neu aufsetzen:
 
-1. Neue Debian-12-VM mit identischem Hostnamen (`proxy01`) und identischer IP.
+1. Neue Debian-13-VM mit identischem Hostnamen (`proxy01`) und identischer IP
+   (am einfachsten mit `./scripts/proxmox-create-vm.sh --name proxy01`).
 2. `git clone …` + `sudo ./scripts/bootstrap.sh` mit Rolle MASTER.
 3. **WICHTIG:** GitHub-Deploy-Key auf proxy01 ist verloren — neuer SSH-Key wird
    im Bootstrap generiert. **Trage den neuen Public-Key in GitHub ein** und
@@ -139,7 +140,7 @@ gelöscht, das Repo ist die einzige Quelle der Wahrheit.
 ### Schritt 1 — proxy01 (MASTER) erstmalig hochziehen
 
 ```bash
-# Frische Debian-12-VM, statische IP setzen oder DHCP
+# Frische Debian-13-VM (siehe scripts/proxmox-create-vm.sh), statische IP setzen oder DHCP
 apt-get update && apt-get install -y git
 git clone https://github.com/<USER>/HA-Reverse-Proxy-HomeLab.git /opt/reverse-proxy
 cd /opt/reverse-proxy

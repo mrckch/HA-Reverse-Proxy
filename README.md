@@ -21,7 +21,8 @@ Hochverfügbares Reverse-Proxy-Setup mit zwei nginx-Nodes, Floating-IP via keepa
                     Backend-Services
 ```
 
-- **proxy01 / proxy02:** Debian 12, 2 vCPU, 2 GB RAM, je auf einem anderen Proxmox-Host
+- **proxy01 / proxy02:** Debian 13 (trixie), 2 vCPU, 2 GB RAM, je auf einem anderen Proxmox-Host
+  (VM-Anlage: [`scripts/proxmox-create-vm.sh`](scripts/proxmox-create-vm.sh))
 - **nginx:** nativ installiert (kein Docker)
 - **keepalived:** VRRP für Floating-IP-Failover
 - **Tailscale:** für Admin-Zugriff auf die Statusseite

@@ -49,7 +49,7 @@ require_root() {
 
 require_debian() {
     if ! grep -qi "debian" /etc/os-release 2>/dev/null; then
-        echo "WARN: Dieses Script ist für Debian 12 entwickelt."
+        echo "WARN: Dieses Script ist für Debian 13 (trixie) entwickelt; Debian 12 sollte ebenfalls laufen."
         read -rp "Trotzdem fortfahren? [yes/NO] " ans
         [[ "$ans" == "yes" ]] || exit 1
     fi

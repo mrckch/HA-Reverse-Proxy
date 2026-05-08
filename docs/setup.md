@@ -11,12 +11,28 @@
 
 ## Schritt 1: VMs vorbereiten
 
-Auf beiden Proxmox-Hosts je eine VM erstellen:
+Auf beiden Proxmox-Hosts je eine VM erstellen — am einfachsten mit dem
+Helper-Script (auf dem Proxmox-Host als root, NICHT in der VM):
 
-- Debian 12 cloud-image (oder Standard-ISO)
-- 2 vCPU, 2 GB RAM, 20 GB Disk
-- Bridge: eure Standard-Bridge
-- Während der Installation: nur ein User (root genügt, sudo ist optional)
+```bash
+# Auf Proxmox-Host A:
+./scripts/proxmox-create-vm.sh --name proxy01
+# Auf Proxmox-Host B:
+./scripts/proxmox-create-vm.sh --name proxy02
+```
+
+Das setzt automatisch das passende Profil:
+- Debian 13 (trixie) netinstall
+- 2 vCPU `host`, 2 GB RAM (Ballooning aus), 20 GB virtio-scsi
+- OVMF/q35, VirtIO-NIC, qemu-guest-agent
+- ISO wird, falls nötig, aus `cdimage.debian.org/current` mit SHA256-Check geholt
+
+Defaults sind via Flags überschreibbar (`--memory`, `--cores`, `--disk-size`,
+`--storage`, `--bridge`, `--vlan` …). VLAN-Tag NUR setzen, wenn dein LAN
+VLAN-getaggt ist; bei einem flachen Homelab-LAN den Flag weglassen.
+
+VM danach starten, Debian-Installer durchklicken (Standard-System + SSH-Server
+reichen), nur einen User (root genügt, sudo ist optional).
 
 **Anti-Affinity:** Falls Proxmox-Cluster mit HA — sicherstellen, dass die
 VMs in einer HA-Group mit unterschiedlichen `restricted`-Nodes landen.

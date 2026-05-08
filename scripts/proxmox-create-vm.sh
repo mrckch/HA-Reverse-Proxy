@@ -9,8 +9,12 @@
 # Aufruf (auf dem Proxmox-Host als root, NICHT in der VM):
 #
 #   ./proxmox-create-vm.sh --name proxy01
-#   ./proxmox-create-vm.sh --name proxy02 --vmid 9012 --bridge vmbr1 --vlan 20
+#   ./proxmox-create-vm.sh --name proxy02 --vmid 9012 --memory 4096
 #   ./proxmox-create-vm.sh --name proxy01 --start
+#
+# (Falls dein Setup VLAN-getaggt ist: zusätzlich --vlan TAG. Bei einem
+#  flachen Homelab-LAN ohne VLAN-Trennung den Flag einfach weglassen —
+#  Default ist untagged.)
 #
 # Nach dem Erzeugen:
 #   - VM in der Proxmox-Web-UI starten (oder mit --start direkt)
@@ -67,7 +71,8 @@ Optional:
   --storage NAME         Disk-Storage, Default: ${DEFAULT_STORAGE}
   --iso-storage NAME     ISO-Storage, Default: ${DEFAULT_ISO_STORAGE}
   --bridge NAME          Default: ${DEFAULT_BRIDGE}
-  --vlan TAG             VLAN-Tag (leer = untagged)
+  --vlan TAG             VLAN-Tag — NUR setzen, wenn dein LAN VLAN-getaggt ist
+                         (Default: leer = untagged, passt für die meisten Homelabs)
   --iso-url BASE_URL     Basis-URL des ISO-Spiegels (Default: Debian current)
   --iso-file FILENAME    Konkretes ISO im Storage nutzen (skipped Download)
   --start                VM nach dem Anlegen starten
@@ -76,8 +81,9 @@ Optional:
 
 Beispiele:
   $0 --name proxy01
-  $0 --name proxy02 --vmid 9012 --memory 4096 --bridge vmbr1 --vlan 20
+  $0 --name proxy02 --vmid 9012 --memory 4096
   $0 --name proxy01 --iso-file debian-13.0.0-amd64-netinst.iso --start
+  $0 --name proxy01 --vlan 20                # nur falls dein LAN VLAN-getaggt ist
 
 VM-Profil (fix, abgestimmt auf den Workload):
   CPU host, q35, OVMF/UEFI, virtio-scsi-single (iothread+ssd+discard),
