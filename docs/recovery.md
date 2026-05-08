@@ -189,6 +189,79 @@ HA-Setup wiederhergestellt.
 
 ---
 
+## Bootstrap-Troubleshooting — Phase B kommt nach Reboot nicht hoch
+
+**Symptom:** Phase A des Bootstraps lief sauber, die VM hat rebootet, aber unter
+der NEUEN IP ist nichts erreichbar — oder du landest auf der neuen IP und Phase
+B scheint nichts zu tun.
+
+### Schritt 1 — Aus der Proxmox-Konsole einloggen
+
+Wenn SSH auf die neue IP nicht antwortet: Proxmox-Web-UI → VM → Console. Login
+als root mit dem im Installer gesetzten Passwort.
+
+### Schritt 2 — Diagnose, in dieser Reihenfolge
+
+```bash
+# Ist die IP überhaupt vergeben?
+ip -4 addr show
+
+# Was sagt der Resume-Service?
+systemctl status proxy-bootstrap-resume.service
+journalctl -u proxy-bootstrap-resume.service --no-pager
+
+# Ist das Bootstrap-Log was da?
+tail -100 /var/log/proxy-bootstrap.log
+
+# Ist /etc/network/interfaces das, was wir wollten?
+cat /etc/network/interfaces
+
+# Konkurrierende Configs?
+ls -la /etc/systemd/network/ /etc/network/interfaces.d/ 2>/dev/null
+```
+
+### Schritt 3 — Häufige Muster
+
+| Befund | Ursache | Fix |
+|---|---|---|
+| `ip addr` zeigt **alte** IP | ifupdown hat die neue Config nicht angewandt (z.B. weil ein Rest in `interfaces.d/*` gewinnt) | `rm -f /etc/network/interfaces.d/*` und `systemctl reboot` — Phase B's `phase_b_sanity_check_ip` schreibt beim nächsten Boot defensiv neu |
+| Resume-Service `inactive (dead)`, aber `is-enabled` = `enabled` | Service hat noch nicht gefeuert (Boot zu früh? Schau auf `network-online.target`) | `systemctl start proxy-bootstrap-resume.service` manuell |
+| Resume-Service `failed`, im Log `dig: timeout` | DNS war 2 Min nicht erreichbar | Netzwerkproblem prüfen (`ping 1.1.1.1`); danach `systemctl restart proxy-bootstrap-resume.service` |
+| Resume-Service `failed`, im Log `permission denied` auf SSH | Deploy-Key noch nicht in GitHub eingetragen | Public-Key (`/root/.ssh/id_ed25519_proxy.pub`) in GitHub als Deploy-Key eintragen, dann Service-Restart |
+| Phase B hängt mitten im Lauf | Meist Paket-Install (`apt`) oder Tailscale | Log lesen, manuell weitermachen mit `/usr/local/sbin/proxy-bootstrap --resume` |
+
+### Schritt 4 — Der "Phase B nochmal von vorn"-Knopf
+
+Wenn du Phase B komplett neu starten willst (idempotent, fasst nichts kaputt
+an, was schon korrekt ist):
+
+```bash
+sudo /usr/local/sbin/proxy-bootstrap --resume
+```
+
+Das liest `/etc/proxy-bootstrap.conf` und führt alle `phase_b_*`-Schritte erneut
+aus. Container-Tools, nginx, keepalived, Tailscale — alle Schritte prüfen
+Existenz vor Aktion.
+
+### Schritt 5 — Wenn alles kaputt ist: Reset auf Phase A
+
+```bash
+# Resume-Service entfernen
+systemctl disable proxy-bootstrap-resume.service
+rm -f /etc/systemd/system/proxy-bootstrap-resume.service /usr/local/sbin/proxy-bootstrap
+
+# Config wegwerfen (enthält Geheimnisse — shred ist sauberer als rm)
+shred -u /etc/proxy-bootstrap.conf 2>/dev/null || rm -f /etc/proxy-bootstrap.conf
+
+# resolv.conf wieder editierbar machen, falls du sie ändern willst
+chattr -i /etc/resolv.conf 2>/dev/null || true
+
+# Aus dem Repo nochmal starten
+cd /opt/reverse-proxy && sudo ./scripts/bootstrap.sh
+```
+
+---
+
 ## Quick-Referenzen
 
 | Symptom | Wo zuerst gucken |
@@ -198,3 +271,4 @@ HA-Setup wiederhergestellt.
 | Status-Seite veraltet | `Ops → Status sofort sammeln` |
 | keepalived flappt | `journalctl -u keepalived --since "30 min ago"` |
 | Disk voll | `journalctl --vacuum-size=200M`, `apt clean`, Backup-Pfad checken |
+| Bootstrap hängt nach IP-Wechsel | `journalctl -u proxy-bootstrap-resume.service` + `/var/log/proxy-bootstrap.log` (siehe „Bootstrap-Troubleshooting" oben) |

@@ -131,7 +131,58 @@ forciert ein manuelles Refresh.
 **Trade-off:** Kein "ich-führe-mal-eben-schnell"-Befehl in der UI. Für Sonderfälle
 weiterhin SSH (über Tailscale).
 
-### 7. Tailscale für Admin-Plane, nicht für Daten-Plane
+### 7. Bootstrap-Networking: ifupdown, kein systemd-networkd
+
+**Entscheidung:** Der Bootstrap schreibt die statische IP nach `/etc/network/interfaces`
+(klassisches Debian-`ifupdown`), nicht nach `/etc/systemd/network/*.network`. Vor
+dem Schreiben werden konkurrierende Konfigurationen aktiv aufgeräumt:
+`/etc/systemd/network/*.network` und `/etc/network/interfaces.d/*` werden gelöscht,
+`systemd-resolved` wird disabled, `cloud-init` über `/etc/cloud/cloud-init.disabled`
+abgeschaltet, `/etc/resolv.conf` statisch geschrieben und mit `chattr +i` gesichert.
+
+**Warum:**
+- Auf Debian 13 minimal (netinstall) ist `ifupdown` das Default-Networking. Ein
+  paralleler `systemd-networkd`-Setup fightet beim Boot mit ifupdown — die IP
+  wird mal richtig, mal nicht oder verzögert vergeben.
+- Erfahrung aus einem Schwester-Projekt (Pi-hole-Stack auf gleicher Debian-Basis):
+  jede Variante außer reinem ifupdown hat beim IP-Wechsel im Bootstrap mindestens
+  einmal verloren.
+- `chattr +i` auf `/etc/resolv.conf` verhindert, dass Tailscale, NetworkManager
+  oder andere Bewohner die DNS-Konfig stillschweigend umschreiben.
+
+**Trade-off:** ifupdown gilt als "alt"; manche moderneren Tools generieren ihre
+Configs für netplan oder networkd. Für unseren Use-Case (zwei statische IPs,
+keine dynamischen Interfaces) ist das egal — Stabilität schlägt Modernität.
+
+### 8. IP-Wechsel via Reboot, nicht via mid-flight-Reload
+
+**Entscheidung:** Wenn der Bootstrap eine andere IP setzt, als die VM aktuell
+trägt, schreibt er die Konfig, installiert einen `systemd`-Resume-Service und
+**rebootet** die VM. Phase B läuft beim nächsten Boot automatisch weiter.
+
+**Warum:**
+- `systemctl restart networking` mid-flight ist auf einer SSH-Session, die über
+  genau dieses Interface läuft, ein "shoot yourself in the foot". Auch wenn es
+  manchmal funktioniert, ist es nicht reproduzierbar genug für ein
+  Setup-Script.
+- Reboot räumt sauber auf: kein veralteter Routing-Cache, keine alten
+  Interface-Aliase, kein halb angewandter ARP-State.
+- Der Bootstrap loggt nach `/var/log/proxy-bootstrap.log` via `tee`-Pipe.
+  `systemctl reboot` direkt würde auf den hängenden tee-Reader warten und damit
+  den Reboot blockieren oder verzögern. Lösung: `systemd-run --on-active=5s`,
+  das den Reboot als transienten Service außerhalb der Pipe triggert.
+
+**Trade-off:** Der Anwender muss sich nach Phase A einmal über die neue IP
+neu einloggen. Live-Log via `tail -f /var/log/proxy-bootstrap.log` macht das
+beobachtbar.
+
+**Selbstheilung:** Phase B startet mit einem IP-Sanity-Check (`phase_b_sanity_check_ip`).
+Wenn die IST-IP nach dem Reboot nicht der SOLL-IP entspricht (z.B. weil ein
+Cloud-Init-Hook nachträglich gefightet hat), schreibt Phase B die Konfig
+defensiv neu und rebootet erneut. Der Resume-Service deaktiviert sich erst
+nach erfolgreichem Phase-B-Lauf (`ExecStartPost=disable`).
+
+### 9. Tailscale für Admin-Plane, nicht für Daten-Plane
 
 **Entscheidung:** Status-Site bindet an die Tailscale-IP, ist *nicht* öffentlich
 erreichbar. Cert-Sync läuft auch via Tailscale-IP. Aber: der reguläre
