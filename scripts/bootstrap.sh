@@ -454,7 +454,11 @@ Host github.com
 EOF
         chmod 600 "$cfg"
     fi
-    ssh-keyscan -t ed25519 github.com 2>/dev/null >> /root/.ssh/known_hosts || true
+    # Hostkeys für ALLE Algorithmen ziehen (ed25519 reicht GitHub heute, aber
+    # ssh probiert Algorithmen in einer bestimmten Reihenfolge — wenn der
+    # erste angefragte Hostkey-Typ nicht in known_hosts ist, fragt ssh
+    # interaktiv. Mit BatchMode=yes scheitert der Test dann silent.)
+    ssh-keyscan -t ed25519,ecdsa,rsa github.com 2>/dev/null >> /root/.ssh/known_hosts || true
     sort -u -o /root/.ssh/known_hosts /root/.ssh/known_hosts 2>/dev/null || true
 }
 
@@ -500,11 +504,32 @@ So gehst du vor:
   4. Erst NACH dem Eintragen hier mit OK bestätigen — wir testen
      dann gleich automatisch, ob die SSH-Authentifizierung klappt."
 
-    if ! ssh -o BatchMode=yes -o ConnectTimeout=10 -T git@github.com 2>&1 | \
-            grep -qE "successfully authenticated|does not provide shell access"; then
+    # Test-Connect: explizit den richtigen Key, accept-new für noch nicht
+    # gecachte Hostkeys (sonst silent-fail bei BatchMode=yes), bis zu 3
+    # Versuche — der erste Connect-Versuch scheitert manchmal an einer
+    # Race mit dem Hostkey-Cache.
+    local n test_output ssh_ok=0
+    for n in 1 2 3; do
+        test_output=$(ssh -o BatchMode=yes -o ConnectTimeout=10 \
+                          -o StrictHostKeyChecking=accept-new \
+                          -i "$SSH_KEY" -o IdentitiesOnly=yes \
+                          -T git@github.com 2>&1 || true)
+        if echo "$test_output" | grep -qE "successfully authenticated|does not provide shell access"; then
+            ssh_ok=1
+            break
+        fi
+        sleep 2
+    done
+
+    if [[ $ssh_ok -eq 0 ]]; then
         wt_yesno "Verifikation fehlgeschlagen" \
-"Der Test-SSH-Connect zu GitHub hat nicht den erwarteten 'successfully \
-authenticated'-String geliefert. Möglich ist:
+"Der Test-SSH-Connect zu GitHub hat nach 3 Versuchen nicht den erwarteten \
+'successfully authenticated'-String geliefert.
+
+Output des letzten Versuchs:
+$test_output
+
+Häufige Ursachen:
 
   - Key wurde noch nicht in GitHub eingetragen
   - Key wurde mit Newline drin eingetragen ('Key is invalid'-Meldung)
@@ -512,6 +537,11 @@ authenticated'-String geliefert. Möglich ist:
       'cat ${SSH_KEY}.pub' aus zweiter Shell holen und neu eintragen
   - GitHub-Outage (selten)
   - Firewall blockiert ausgehend SSH (Port 22)
+
+Manuelle Verifikation in einer zweiten Shell:
+  ssh -T git@github.com
+Wenn das mit 'Hi <user>! You've successfully authenticated' antwortet, \
+war der Bootstrap-Test ein false-negative — dann hier mit JA weitergehen.
 
 Trotzdem fortfahren? (Bei NEIN brechen wir ab — du kannst das Bootstrap \
 später erneut starten, deine Eingaben sind in $BOOTSTRAP_CONF gespeichert.)" || {
