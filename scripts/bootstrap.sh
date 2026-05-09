@@ -683,7 +683,12 @@ phase_b_packages() {
     DEBIAN_FRONTEND=noninteractive apt-get -y \
         -o Dpkg::Options::="--force-confdef" \
         -o Dpkg::Options::="--force-confold" upgrade
+    # 'sudo' MUSS rein: visudo (Validator für sudoers-Syntax) gehört dazu,
+    # und phase_b_keepalived_helpers nutzt visudo. Außerdem braucht die
+    # Status-Site später sudo via /etc/sudoers.d/proxy-status für ihren
+    # Action-Catalog (nginx reload, certbot renew, …).
     DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        sudo \
         nginx keepalived \
         certbot python3-certbot-nginx \
         fail2ban ufw \
