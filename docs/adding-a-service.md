@@ -1,6 +1,31 @@
 # Service hinzufügen
 
-## Workflow
+## Schnellster Weg: der Wizard
+
+```bash
+cd reverse-proxy
+./scripts/add-site.sh --apply
+```
+
+Der Wizard fragt interaktiv: Domain → Backend → WebSocket? → SSH-Targets,
+generiert die `nginx/sites-available/<name>.conf`, committed, pusht und
+führt anschließend per SSH `cert-request.sh` (auf MASTER) und `enable-site.sh`
+(auf beiden Nodes) aus. Nach ~1 Min ist die neue Site live.
+
+Voraussetzungen:
+- Du bist im Repo-Klon auf deinem **Dev-Rechner** (nicht auf einer VM —
+  die haben read-only Deploy-Keys, kein Push-Zugriff)
+- Bash (Linux/macOS direkt, Windows: Git Bash oder WSL)
+- SSH-Zugang zu beiden Nodes (am komfortabelsten via Tailscale-MagicDNS:
+  `ssh root@proxy01` / `ssh root@proxy02` funktionieren dann ohne IP-Eingabe)
+- Push-Zugang aufs Repo (hast du eh)
+- Eine Domain, deren A-Record auf die **Floating-IP** zeigt
+
+Ohne `--apply`: der Wizard erstellt nur die Config + push. Cert + Enable
+musst du manuell auf den Nodes laufen lassen — er druckt dir die Befehle
+am Ende klar aus.
+
+## Manueller Workflow (wenn du den Wizard nicht nutzen willst)
 
 Alle Änderungen passieren auf dem **lokalen Rechner** (Repo-Clone). Push zu GitHub → die VMs ziehen das Update binnen ~2 Minuten automatisch.
 
