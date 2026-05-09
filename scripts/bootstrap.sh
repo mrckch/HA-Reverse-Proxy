@@ -459,30 +459,46 @@ EOF
 }
 
 display_pubkey_and_wait() {
-    local pubkey repo_path
-    pubkey=$(cat "${SSH_KEY}.pub")
+    local repo_path
     # Aus 'git@github.com:owner/repo.git' den 'owner/repo'-Pfad ableiten,
     # damit der Hinweis-URL direkt auf das richtige Repo zeigt.
     repo_path=${REPO_URL#git@github.com:}
     repo_path=${repo_path%.git}
+
+    # WICHTIG: Den Key NICHT im whiptail-Dialog anzeigen — whiptail
+    # bricht lange Zeilen automatisch um (~78 Zeichen), und ed25519-
+    # Pubkeys sind ~99 Zeichen. Bei Copy-Paste landet ein Newline
+    # mitten im Key, GitHub lehnt mit "Key is invalid" ab.
+    # Stattdessen den User auf 'cat ...pub' in einer zweiten Shell
+    # verweisen — eine Zeile, kein Wrap-Risiko.
     wt_msg "GitHub Deploy-Key eintragen" \
-"Damit diese Node das Repo lesen kann, muss der folgende Public-Key \
-als Deploy-Key (read-only) in eurem GitHub-Repo eingetragen werden.
+"Damit diese Node das Repo lesen kann, brauchen wir einen Deploy-Key
+(read-only) in eurem GitHub-Repo.
 
-Schritte:
+WICHTIG — den Key NICHT aus diesem Dialog kopieren!
+Dieser Dialog bricht lange Zeilen um, der Key wäre dann ungültig
+('Key is invalid' in GitHub).
 
-  1. Öffne https://github.com/${repo_path}/settings/keys
-  2. Klick 'Add deploy key'
-  3. Title: ${PROJECT}-${NODE_NAME}
-  4. Key: (untenstehenden Block einfügen)
-  5. 'Allow write access' → NICHT aktivieren (read-only)
-  6. 'Add key'
+So gehst du vor:
 
-Der Key (auch in ${SSH_KEY}.pub):
+  1. Öffne eine ZWEITE SSH-Session zur VM (oder Proxmox-Konsole).
+     Lass DIESEN Dialog stehen.
 
-$pubkey
+  2. In der zweiten Session:
+       cat ${SSH_KEY}.pub
+     Das ist EINE Zeile (ssh-ed25519 AAAA…  ${PROJECT}-${NODE_NAME}).
+     Komplett markieren und kopieren — Anfang 'ssh-ed25519',
+     Ende '${PROJECT}-${NODE_NAME}'.
 
-Mit OK bestätigst du, dass der Key in GitHub eingetragen ist."
+  3. Im Browser: https://github.com/${repo_path}/settings/keys
+     - 'Add deploy key'
+     - Title:        ${PROJECT}-${NODE_NAME}
+     - Key:          (die kopierte Zeile einfügen)
+     - 'Allow write access' → NICHT aktivieren (read-only)
+     - 'Add key'
+
+  4. Erst NACH dem Eintragen hier mit OK bestätigen — wir testen
+     dann gleich automatisch, ob die SSH-Authentifizierung klappt."
 
     if ! ssh -o BatchMode=yes -o ConnectTimeout=10 -T git@github.com 2>&1 | \
             grep -qE "successfully authenticated|does not provide shell access"; then
@@ -491,13 +507,16 @@ Mit OK bestätigst du, dass der Key in GitHub eingetragen ist."
 authenticated'-String geliefert. Möglich ist:
 
   - Key wurde noch nicht in GitHub eingetragen
+  - Key wurde mit Newline drin eingetragen ('Key is invalid'-Meldung)
+    → in GitHub den fehlerhaften Eintrag löschen, Key per
+      'cat ${SSH_KEY}.pub' aus zweiter Shell holen und neu eintragen
   - GitHub-Outage (selten)
   - Firewall blockiert ausgehend SSH (Port 22)
 
 Trotzdem fortfahren? (Bei NEIN brechen wir ab — du kannst das Bootstrap \
 später erneut starten, deine Eingaben sind in $BOOTSTRAP_CONF gespeichert.)" || {
             echo "Bootstrap pausiert. Trage den Key in GitHub ein und starte erneut:"
-            echo "  sudo $0"
+            echo "  $0"
             exit 1
         }
     fi
