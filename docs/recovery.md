@@ -244,22 +244,41 @@ Das liest `/etc/proxy-bootstrap.conf` und führt alle `phase_b_*`-Schritte erneu
 aus. Container-Tools, nginx, keepalived, Tailscale — alle Schritte prüfen
 Existenz vor Aktion.
 
-### Schritt 5 — Wenn alles kaputt ist: Reset auf Phase A
+### Schritt 5 — Wenn alles kaputt ist: Reset
+
+Dafür gibt's ein eigenes Script — idempotent, mit Plan-Anzeige und
+optionalem `--dry-run`. Auf der VM als root:
 
 ```bash
-# Resume-Service entfernen
-systemctl disable proxy-bootstrap-resume.service
-rm -f /etc/systemd/system/proxy-bootstrap-resume.service /usr/local/sbin/proxy-bootstrap
+cd /opt/reverse-proxy
+git pull --ff-only
 
-# Config wegwerfen (enthält Geheimnisse — shred ist sauberer als rm)
-shred -u /etc/proxy-bootstrap.conf 2>/dev/null || rm -f /etc/proxy-bootstrap.conf
+# Soft-Reset: nur Phase-A-Artefakte (Resume-Service, bootstrap.conf,
+# Log, resolv.conf-immutable). SSH-Deploy-Key bleibt — der ist eh
+# schon in GitHub eingetragen.
+./scripts/bootstrap-reset.sh
 
-# resolv.conf wieder editierbar machen, falls du sie ändern willst
-chattr -i /etc/resolv.conf 2>/dev/null || true
+# Variante A: zusätzlich Phase-B (values.env, proxy-status/-deploy
+# services, cron, sudoers, logrotate, unattended-upgrades).
+./scripts/bootstrap-reset.sh --full
 
-# Aus dem Repo nochmal starten
-cd /opt/reverse-proxy && ./scripts/bootstrap.sh
+# Variante B: alles inkl. SSH-Deploy-Key (dann auch in GitHub raus!)
+./scripts/bootstrap-reset.sh --full --no-keep-key
+
+# Bootstrap erneut starten
+./scripts/bootstrap.sh
 ```
+
+`./scripts/bootstrap-reset.sh --help` listet alle Flags. Vor jedem
+echten Lauf eine Confirmation; mit `-y` überspringbar; mit `--dry-run`
+nur den Plan ausgeben ohne anzufassen.
+
+**Was das Script bewusst NICHT anfasst:** `/etc/letsencrypt/`
+(Re-Issue knabbert am Rate-Limit), `/etc/network/interfaces`
+(Mid-flight-Änderung würde die SSH-Session killen), installierte
+Pakete (idempotent, Bootstrap installiert sie eh wieder). Für einen
+*wirklich* sauberen Reset: VM in Proxmox neu aufsetzen mit
+`./scripts/proxmox-create-vm.sh --name proxy01`.
 
 ---
 
