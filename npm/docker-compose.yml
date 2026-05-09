@@ -1,0 +1,27 @@
+# Nginx Proxy Manager (NPM) — Docker-Compose-Definition
+#
+# Wird vom npm-bootstrap.sh nach /opt/npm/docker-compose.yml installiert.
+# Persistente Daten + Let's-Encrypt-Certs liegen unter /opt/npm/{data,letsencrypt}.
+#
+# Update-Befehl:
+#   cd /opt/npm && docker compose pull && docker compose up -d
+#
+# Backup-Befehl (manuell):
+#   tar czf npm-backup-$(date +%F).tar.gz /opt/npm/data /opt/npm/letsencrypt
+
+services:
+  npm:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: npm
+    restart: unless-stopped
+    ports:
+      - '80:80'      # HTTP   (öffentlich, Let's-Encrypt-Challenge)
+      - '443:443'    # HTTPS  (öffentlich, eigentlicher Proxy-Traffic)
+      - '81:81'      # Admin-Web-UI — bewusst auf allen Interfaces;
+                     # Schutz via Login (Default ändern!) oder Firewall
+    volumes:
+      - /opt/npm/data:/data
+      - /opt/npm/letsencrypt:/etc/letsencrypt
+    environment:
+      # Standard-DB ist SQLite im /data-Volume — keine externe DB nötig.
+      DISABLE_IPV6: 'true'

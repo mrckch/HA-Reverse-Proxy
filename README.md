@@ -1,6 +1,20 @@
-# Reverse Proxy HA-Setup
+# Reverse Proxy
 
-Hochverfügbares Reverse-Proxy-Setup mit zwei nginx-Nodes, Floating-IP via keepalived und einer Statusseite.
+Dieses Repo enthält **zwei alternative Setups** — wähle eins:
+
+## Variante A: NPM (Nginx Proxy Manager) — Web-UI, einfach
+
+Eine VM, klicki-bunt im Browser. Kein Linux-Wissen nötig.
+Empfohlen für Homelab-Nutzer ohne Sysadmin-Hintergrund.
+
+→ **Anleitung:** [docs/npm-setup.md](docs/npm-setup.md)
+→ **Bootstrap-Script:** [scripts/npm-bootstrap.sh](scripts/npm-bootstrap.sh)
+
+## Variante B: HA-Setup mit zwei nginx-Nodes — Profi-Pfad
+
+Hochverfügbares Setup mit zwei Nodes, Floating-IP via keepalived,
+GitOps-Workflow, eigener Status-Site. Deutlich höhere Lernkurve,
+keine Web-UI für Konfiguration.
 
 ## Architektur
 
