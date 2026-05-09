@@ -445,7 +445,7 @@ phase_b() {
 
 Schritt-für-Schritt-Anleitung für die ersten Sites:
   /opt/npm-bootstrap/docs/npm-setup.md  (im Repo)
-  oder online: https://github.com/mrckch/HA-Reverse-Proxy/blob/main/docs/npm-setup.md
+  oder online: https://github.com/mrckch/Reverse-Proxy-VM/blob/main/docs/npm-setup.md
 
 Update später:
   cd /opt/npm

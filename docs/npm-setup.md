@@ -30,7 +30,7 @@ Auf dem **Proxmox-Host** als root in der Proxmox-Shell:
 
 ```bash
 # Repo holen (git ist auf Proxmox eh vorhanden)
-git clone https://github.com/mrckch/HA-Reverse-Proxy.git /opt/repo
+git clone https://github.com/mrckch/Reverse-Proxy-VM.git /opt/repo
 cd /opt/repo
 
 # VM anlegen (Defaults sind sinnvoll — 2 vCPU, 2 GB RAM, 20 GB Disk,
@@ -53,7 +53,7 @@ Per SSH oder Proxmox-Konsole **als root**:
 
 ```bash
 apt-get update && apt-get install -y git
-git clone https://github.com/mrckch/HA-Reverse-Proxy.git /opt/npm-bootstrap
+git clone https://github.com/mrckch/Reverse-Proxy-VM.git /opt/npm-bootstrap
 cd /opt/npm-bootstrap
 ./scripts/npm-bootstrap.sh
 ```

@@ -1,26 +1,26 @@
 #!/bin/bash
 # scripts/proxmox-create-vm.sh
 #
-# Erzeugt auf einem Proxmox-VE-8-Host eine VM, die als Reverse-Proxy-Node
-# (proxy01 oder proxy02) dient. Werte und Defaults sind auf den Workload
-# dieses Repos abgestimmt: nginx + keepalived + Tailscale + Status-Site,
-# nativ auf Debian 13 (trixie) per netinstall.
+# Erzeugt auf einem Proxmox-VE-8-Host eine Debian-13-VM für den Reverse
+# Proxy (Nginx Proxy Manager). Defaults sind auf diesen Use-Case
+# abgestimmt: 2 vCPU, 2 GB RAM, 20 GB Disk, OVMF/q35, virtio-scsi,
+# qemu-guest-agent.
 #
 # Aufruf (auf dem Proxmox-Host als root, NICHT in der VM):
 #
-#   ./proxmox-create-vm.sh --name proxy01
-#   ./proxmox-create-vm.sh --name proxy02 --vmid 9012 --memory 4096
-#   ./proxmox-create-vm.sh --name proxy01 --start
+#   ./proxmox-create-vm.sh --name npm
+#   ./proxmox-create-vm.sh --name npm --memory 4096 --disk-size 40
+#   ./proxmox-create-vm.sh --name npm --start
 #
-# (Falls dein Setup VLAN-getaggt ist: zusätzlich --vlan TAG. Bei einem
+# (Falls dein LAN VLAN-getaggt ist: zusätzlich --vlan TAG. Bei einem
 #  flachen Homelab-LAN ohne VLAN-Trennung den Flag einfach weglassen —
 #  Default ist untagged.)
 #
 # Nach dem Erzeugen:
 #   - VM in der Proxmox-Web-UI starten (oder mit --start direkt)
-#   - Debian 13 netinstall durchklicken (nur ein User reicht)
+#   - Debian 13 netinstall durchklicken (nur ein root-User reicht)
 #   - In der frischen VM dann das Bootstrap dieses Repos:
-#       sudo ./scripts/bootstrap.sh
+#       ./scripts/npm-bootstrap.sh
 #
 # Idempotent: existierende VMID/Name -> Abbruch mit Hinweis (keine Überschreibung).
 
@@ -61,7 +61,7 @@ usage() {
 proxmox-create-vm.sh — Reverse-Proxy-VM auf Proxmox 8 anlegen
 
 Pflicht:
-  --name NAME            VM- und Hostname (z.B. proxy01)
+  --name NAME            VM- und Hostname (Vorschlag: npm)
 
 Optional:
   --vmid N               VMID (Default: nächste freie via 'pvesh get /cluster/nextid')
@@ -80,10 +80,10 @@ Optional:
   --help                 Diese Hilfe
 
 Beispiele:
-  $0 --name proxy01
-  $0 --name proxy02 --vmid 9012 --memory 4096
-  $0 --name proxy01 --iso-file debian-13.0.0-amd64-netinst.iso --start
-  $0 --name proxy01 --vlan 20                # nur falls dein LAN VLAN-getaggt ist
+  $0 --name npm
+  $0 --name npm --vmid 9101 --memory 4096
+  $0 --name npm --iso-file debian-13.0.0-amd64-netinst.iso --start
+  $0 --name npm --vlan 20                # nur falls dein LAN VLAN-getaggt ist
 
 VM-Profil (fix, abgestimmt auf den Workload):
   CPU host, q35, OVMF/UEFI, virtio-scsi-single (iothread+ssd+discard),
@@ -293,7 +293,7 @@ run qm create "$VMID" \
     --agent enabled=1 \
     --ostype l26 \
     --tags "reverse-proxy;debian13" \
-    --description "Reverse-Proxy-Node ($NAME) — siehe https://github.com/mrckch/HA-Reverse-Proxy"
+    --description "Reverse-Proxy-Node ($NAME) — siehe https://github.com/mrckch/Reverse-Proxy-VM"
 
 if [[ "$START_AFTER" -eq 1 ]]; then
     info "Starte VM $VMID..."
@@ -308,12 +308,11 @@ Nächste Schritte:
   1. Konsole öffnen (Web-UI -> VM $VMID -> Console) oder:
        qm terminal $VMID         (nur wenn Serial konfiguriert)
   2. Debian-13-Installer durchklicken (Standard-System + SSH-Server reicht).
-  3. Nach dem Reboot der VM in ihr:
+  3. Nach dem Reboot der VM in ihr (als root):
        apt-get update && apt-get install -y git
-       git clone https://github.com/mrckch/HA-Reverse-Proxy.git /opt/reverse-proxy
-       cd /opt/reverse-proxy
-       sudo ./scripts/bootstrap.sh
+       git clone https://github.com/mrckch/Reverse-Proxy-VM.git /opt/npm-bootstrap
+       cd /opt/npm-bootstrap
+       ./scripts/npm-bootstrap.sh
 
-Tipp: Auf dem ZWEITEN Proxmox-Host das Script erneut aufrufen:
-       $0 --name proxy02
+Vollständige Anleitung: docs/npm-setup.md (auch online im Repo).
 EOF

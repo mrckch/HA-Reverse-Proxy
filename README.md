@@ -19,14 +19,14 @@ Bootstrap-Scripts machen den ganzen Aufbau, anschließend nur noch Web-UI.
 
 ```bash
 # 1. Auf dem Proxmox-Host (Shell als root):
-git clone https://github.com/mrckch/HA-Reverse-Proxy.git /opt/repo
+git clone https://github.com/mrckch/Reverse-Proxy-VM.git /opt/repo
 cd /opt/repo
 ./scripts/proxmox-create-vm.sh --name npm
 
 # 2. VM in der Proxmox-Web-UI starten, Debian 13 netinstall durchklicken,
 #    dann in der VM (per SSH oder Proxmox-Konsole, als root):
 apt-get update && apt-get install -y git
-git clone https://github.com/mrckch/HA-Reverse-Proxy.git /opt/npm-bootstrap
+git clone https://github.com/mrckch/Reverse-Proxy-VM.git /opt/npm-bootstrap
 cd /opt/npm-bootstrap
 ./scripts/npm-bootstrap.sh
 
