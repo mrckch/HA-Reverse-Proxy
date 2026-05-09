@@ -324,7 +324,7 @@ Format: git@github.com:USERNAME/REPONAME.git
 Diese Node braucht NUR Lese-Zugriff (read-only Pull alle 2 Min). \
 Wir generieren gleich einen SSH-Key, den du als Deploy-Key in GitHub \
 einträgst. Der Push-Workflow läuft weiterhin von deinem Dev-Rechner." \
-        "git@github.com:USER/HA-Reverse-Proxy-HomeLab.git" \
+        "git@github.com:mrckch/HA-Reverse-Proxy.git" \
         '^git@[A-Za-z0-9.-]+:[A-Za-z0-9_./-]+\.git$' \
         "Format: git@github.com:USER/REPO.git")
 }
@@ -459,15 +459,19 @@ EOF
 }
 
 display_pubkey_and_wait() {
-    local pubkey
+    local pubkey repo_path
     pubkey=$(cat "${SSH_KEY}.pub")
+    # Aus 'git@github.com:owner/repo.git' den 'owner/repo'-Pfad ableiten,
+    # damit der Hinweis-URL direkt auf das richtige Repo zeigt.
+    repo_path=${REPO_URL#git@github.com:}
+    repo_path=${repo_path%.git}
     wt_msg "GitHub Deploy-Key eintragen" \
 "Damit diese Node das Repo lesen kann, muss der folgende Public-Key \
 als Deploy-Key (read-only) in eurem GitHub-Repo eingetragen werden.
 
 Schritte:
 
-  1. Öffne https://github.com/USER/REPO/settings/keys
+  1. Öffne https://github.com/${repo_path}/settings/keys
   2. Klick 'Add deploy key'
   3. Title: ${PROJECT}-${NODE_NAME}
   4. Key: (untenstehenden Block einfügen)

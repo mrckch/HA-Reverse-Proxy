@@ -142,7 +142,7 @@ gelöscht, das Repo ist die einzige Quelle der Wahrheit.
 ```bash
 # Frische Debian-13-VM (siehe scripts/proxmox-create-vm.sh), statische IP setzen oder DHCP
 apt-get update && apt-get install -y git
-git clone https://github.com/<USER>/HA-Reverse-Proxy-HomeLab.git /opt/reverse-proxy
+git clone https://github.com/mrckch/HA-Reverse-Proxy.git /opt/reverse-proxy
 cd /opt/reverse-proxy
 sudo ./scripts/bootstrap.sh
 ```

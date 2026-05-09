@@ -44,7 +44,7 @@ Auf **proxy01** (das wird gleich MASTER):
 ```bash
 # Als root, sonst sudo:
 apt-get update && apt-get install -y git
-git clone https://github.com/<USER>/HA-Reverse-Proxy-HomeLab.git /opt/reverse-proxy
+git clone https://github.com/mrckch/HA-Reverse-Proxy.git /opt/reverse-proxy
 cd /opt/reverse-proxy
 sudo ./scripts/bootstrap.sh
 ```
@@ -57,7 +57,7 @@ was er tut. Du brauchst:
 - Statische IP, Gateway, Floating-IP
 - VRRP-Passwort (8+ Zeichen — gleiches auch auf proxy02 verwenden!)
 - E-Mail für Let's Encrypt
-- Repo-URL (SSH-Format: `git@github.com:USER/REPO.git`)
+- Repo-URL (SSH-Format, Default: `git@github.com:mrckch/HA-Reverse-Proxy.git`)
 - Optional: Tailscale-Authkey
 
 Mittendrin generiert der Assistent einen SSH-Deploy-Key und zeigt ihn an —
@@ -71,7 +71,7 @@ automatisch weiter.
 ## Schritt 3: proxy02 — gleicher Workflow
 
 ```bash
-git clone https://github.com/<USER>/HA-Reverse-Proxy-HomeLab.git /opt/reverse-proxy
+git clone https://github.com/mrckch/HA-Reverse-Proxy.git /opt/reverse-proxy
 cd /opt/reverse-proxy
 sudo ./scripts/bootstrap.sh
 ```
