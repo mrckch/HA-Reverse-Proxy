@@ -53,7 +53,7 @@ VM komplett neu aufsetzen:
 
 1. Neue Debian-13-VM mit identischem Hostnamen (`proxy01`) und identischer IP
    (am einfachsten mit `./scripts/proxmox-create-vm.sh --name proxy01`).
-2. `git clone …` + `sudo ./scripts/bootstrap.sh` mit Rolle MASTER.
+2. `git clone …` + `./scripts/bootstrap.sh` (als root) mit Rolle MASTER.
 3. **WICHTIG:** GitHub-Deploy-Key auf proxy01 ist verloren — neuer SSH-Key wird
    im Bootstrap generiert. **Trage den neuen Public-Key in GitHub ein** und
    **lösche den alten** (Repo → Settings → Deploy keys).
@@ -140,11 +140,12 @@ gelöscht, das Repo ist die einzige Quelle der Wahrheit.
 ### Schritt 1 — proxy01 (MASTER) erstmalig hochziehen
 
 ```bash
-# Frische Debian-13-VM (siehe scripts/proxmox-create-vm.sh), statische IP setzen oder DHCP
+# Frische Debian-13-VM (siehe scripts/proxmox-create-vm.sh), als root einloggen.
+# DHCP oder beliebige statische IP — die richtige setzt der Bootstrap selbst.
 apt-get update && apt-get install -y git
 git clone https://github.com/mrckch/HA-Reverse-Proxy.git /opt/reverse-proxy
 cd /opt/reverse-proxy
-sudo ./scripts/bootstrap.sh
+./scripts/bootstrap.sh
 ```
 
 TUI-Antworten siehe [setup.md](setup.md). Public-Key in GitHub eintragen.
@@ -236,7 +237,7 @@ Wenn du Phase B komplett neu starten willst (idempotent, fasst nichts kaputt
 an, was schon korrekt ist):
 
 ```bash
-sudo /usr/local/sbin/proxy-bootstrap --resume
+/usr/local/sbin/proxy-bootstrap --resume
 ```
 
 Das liest `/etc/proxy-bootstrap.conf` und führt alle `phase_b_*`-Schritte erneut
@@ -257,7 +258,7 @@ shred -u /etc/proxy-bootstrap.conf 2>/dev/null || rm -f /etc/proxy-bootstrap.con
 chattr -i /etc/resolv.conf 2>/dev/null || true
 
 # Aus dem Repo nochmal starten
-cd /opt/reverse-proxy && sudo ./scripts/bootstrap.sh
+cd /opt/reverse-proxy && ./scripts/bootstrap.sh
 ```
 
 ---

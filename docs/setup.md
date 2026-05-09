@@ -39,14 +39,15 @@ VMs in einer HA-Group mit unterschiedlichen `restricted`-Nodes landen.
 
 ## Schritt 2: Repo herunterladen + Bootstrap starten
 
-Auf **proxy01** (das wird gleich MASTER):
+Auf **proxy01** (das wird gleich MASTER) als **root** (auf einer frischen
+netinst-Box ist `sudo` nicht installiert — entweder direkt als root einloggen
+oder vorher `apt-get install -y sudo` und einen User in die `sudo`-Gruppe):
 
 ```bash
-# Als root, sonst sudo:
 apt-get update && apt-get install -y git
 git clone https://github.com/mrckch/HA-Reverse-Proxy.git /opt/reverse-proxy
 cd /opt/reverse-proxy
-sudo ./scripts/bootstrap.sh
+./scripts/bootstrap.sh
 ```
 
 Der Bootstrap-Assistent führt dich durch 10 TUI-Dialoge. Jeder Dialog erklärt,
@@ -70,10 +71,13 @@ automatisch weiter.
 
 ## Schritt 3: proxy02 — gleicher Workflow
 
+Wieder als root:
+
 ```bash
+apt-get update && apt-get install -y git
 git clone https://github.com/mrckch/HA-Reverse-Proxy.git /opt/reverse-proxy
 cd /opt/reverse-proxy
-sudo ./scripts/bootstrap.sh
+./scripts/bootstrap.sh
 ```
 
 Eingaben:
