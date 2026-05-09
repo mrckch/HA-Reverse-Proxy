@@ -24,16 +24,23 @@ mit der genauen Beschriftung.
    → musst du beim ersten Login ändern.
 ```
 
-## Phase 1 — VM auf Proxmox anlegen (1 Befehl)
+## Phase 1 — VM auf Proxmox anlegen
 
 Auf dem **Proxmox-Host** als root in der Proxmox-Shell:
 
 ```bash
-cd /tmp
-wget https://raw.githubusercontent.com/mrckch/HA-Reverse-Proxy/main/scripts/proxmox-create-vm.sh
-chmod +x proxmox-create-vm.sh
-./proxmox-create-vm.sh --name npm
+# Repo holen (git ist auf Proxmox eh vorhanden)
+git clone https://github.com/mrckch/HA-Reverse-Proxy.git /opt/repo
+cd /opt/repo
+
+# VM anlegen (Defaults sind sinnvoll — 2 vCPU, 2 GB RAM, 20 GB Disk,
+# Bridge vmbr0, ISO-Storage 'local'. Anpassbar via Flags, siehe --help)
+./scripts/proxmox-create-vm.sh --name npm
 ```
+
+Das Script lädt bei Bedarf das aktuelle Debian-13-netinstall-ISO (mit
+SHA256-Verifikation), legt die VM mit dem passenden Hardware-Profil an
+und gibt die nächsten Schritte aus.
 
 In der Proxmox-Web-UI: VM starten, **Debian-13-netinstall** durchklicken:
 - Sprache: deutsch (oder englisch, egal)
@@ -171,11 +178,14 @@ Beides kannst du backuppen (siehe Phase 5).
 ### Wie melde ich mich von außerhalb an?
 
 Standardmäßig **gar nicht** — die Web-UI auf Port 81 ist nur im LAN
-erreichbar. Wenn du von unterwegs zugreifen willst, hast du drei Optionen:
+erreichbar. Das ist die empfohlene Default-Variante: vom Sofa aus
+konfigurieren, von außerhalb gar nicht erreichbar.
 
-1. **Tailscale** auf der VM installieren: `apt install tailscale && tailscale up --ssh`. Dann ist die VM auf der Tailscale-IP erreichbar (von Geräten mit Tailscale-Client). Empfehlung.
-2. **VPN** zu deinem Heimnetz (z.B. Wireguard auf dem Router).
-3. **NPM-Web-UI über NPM selbst publizieren** — als eigene Proxy-Host-Definition mit eigenem SSL. Erfordert sorgfältige IP-Whitelist (Tab „Access List") oder Basic Auth, sonst Sicherheits-Risiko.
+Wenn du das später ändern willst (z.B. „mal von unterwegs einloggen"):
+
+1. **VPN ins Heimnetz** — empfohlen. Z.B. WireGuard auf dem Router (FritzBox, OPNsense, etc.) oder als eigener Container neben NPM. Damit landest du im LAN und erreichst alles, inkl. NPM-Web-UI.
+2. **Tailscale** auf der VM (`apt install tailscale && tailscale up --ssh`). Geräte mit Tailscale-Client können dann die VM über die Tailscale-IP ansprechen. Komfortabler als Wireguard, aber abhängig vom Tailscale-SaaS.
+3. **Web-UI über NPM selbst publizieren** — wäre möglich (eigener Proxy-Host mit Access-List/Basic-Auth), ist aber für die Admin-Oberfläche eines Reverse-Proxys ein vermeidbares Risiko. Lieber Variante 1 oder 2.
 
 ### Was passiert, wenn die VM ausfällt?
 

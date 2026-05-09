@@ -21,44 +21,9 @@ jobs:
           scandir: ./scripts
           severity: warning
 
-  nginx-test:
+  compose-validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Render und prüfen mit nginx -t
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y nginx openssl
-          # Dummy-Strukturen, damit der Test nicht über fehlende Pfade stolpert
-          sudo mkdir -p /etc/nginx/ssl /etc/letsencrypt/live/example.com /var/www/letsencrypt
-          sudo openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
-              -keyout /etc/nginx/ssl/default.key -out /etc/nginx/ssl/default.crt \
-              -subj "/CN=test" 2>/dev/null
-          sudo openssl dhparam -out /etc/nginx/ssl/dhparam.pem 1024 2>/dev/null
-          for f in fullchain privkey chain cert; do
-              sudo cp /etc/nginx/ssl/default.crt /etc/letsencrypt/live/example.com/${f}.pem
-          done
-          # Distro-Defaults entfernen (kollidieren mit unseren default_server)
-          sudo rm -f /etc/nginx/sites-enabled/* /etc/nginx/sites-available/* \
-                     /etc/nginx/conf.d/*.conf
-          # Configs deployen
-          sudo cp nginx/nginx.conf /etc/nginx/nginx.conf
-          sudo cp nginx/conf.d/*.conf /etc/nginx/conf.d/
-          sudo mkdir -p /etc/nginx/snippets /etc/nginx/sites-available /etc/nginx/sites-enabled
-          sudo cp nginx/snippets/*.conf /etc/nginx/snippets/
-          # Sites-available: Inhalt kopieren, NICHT das Verzeichnis
-          # (cp -r SRC DEST würde bei existierendem DEST nach DEST/SRC verschachteln)
-          sudo cp nginx/sites-available/*.conf /etc/nginx/sites-available/
-          # Beispiel-Service aktivieren
-          sudo ln -sf /etc/nginx/sites-available/example-service.conf /etc/nginx/sites-enabled/
-          sudo nginx -t
-
-  python-syntax:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
-      - run: |
-          pip install -r status/requirements.txt
-          python -m py_compile status/app.py
+      - name: docker compose config (Syntax-Check)
+        run: docker compose -f npm/docker-compose.yml config --quiet

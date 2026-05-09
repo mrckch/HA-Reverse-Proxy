@@ -1,96 +1,68 @@
-# Reverse Proxy
+# Reverse Proxy mit Web-UI (Nginx Proxy Manager)
 
-Dieses Repo enthält **zwei alternative Setups** — wähle eins:
+Setup für einen **Reverse Proxy mit Klick-bunter Web-UI** auf Basis von
+[Nginx Proxy Manager](https://nginxproxymanager.com/) (NPM). Eine VM auf
+Proxmox, Docker-Container, alles im Browser.
 
-## Variante A: NPM (Nginx Proxy Manager) — Web-UI, einfach
+Gedacht für Homelab-Nutzer **ohne Linux-/Sysadmin-Erfahrung** — die zwei
+Bootstrap-Scripts machen den ganzen Aufbau, anschließend nur noch Web-UI.
 
-Eine VM, klicki-bunt im Browser. Kein Linux-Wissen nötig.
-Empfohlen für Homelab-Nutzer ohne Sysadmin-Hintergrund.
+## Was du am Ende hast
 
-→ **Anleitung:** [docs/npm-setup.md](docs/npm-setup.md)
-→ **Bootstrap-Script:** [scripts/npm-bootstrap.sh](scripts/npm-bootstrap.sh)
+- **Eine VM** mit Nginx Proxy Manager
+- **Web-UI** auf http://&lt;vm-ip&gt;:81 (nur im LAN)
+- Klick-Workflow: Domain + Backend-IP eintragen → SSL-Häkchen → fertig
+- Eingebauter **Let's Encrypt** (NPM macht das selbst)
+- Eingebauter **Backup-Export** (Settings → Backups)
 
-## Variante B: HA-Setup mit zwei nginx-Nodes — Profi-Pfad
+## Schnellstart
 
-Hochverfügbares Setup mit zwei Nodes, Floating-IP via keepalived,
-GitOps-Workflow, eigener Status-Site. Deutlich höhere Lernkurve,
-keine Web-UI für Konfiguration.
+```bash
+# 1. Auf dem Proxmox-Host (Shell als root):
+git clone https://github.com/mrckch/HA-Reverse-Proxy.git /opt/repo
+cd /opt/repo
+./scripts/proxmox-create-vm.sh --name npm
 
-## Architektur
+# 2. VM in der Proxmox-Web-UI starten, Debian 13 netinstall durchklicken,
+#    dann in der VM (per SSH oder Proxmox-Konsole, als root):
+apt-get update && apt-get install -y git
+git clone https://github.com/mrckch/HA-Reverse-Proxy.git /opt/npm-bootstrap
+cd /opt/npm-bootstrap
+./scripts/npm-bootstrap.sh
 
-```
-                    ┌─────────────────┐
-                    │  Floating-IP    │  ← keepalived (VRRP)
-                    └────────┬────────┘
-                             │
-                ┌────────────┴────────────┐
-                │                         │
-        ┌───────▼────────┐       ┌────────▼───────┐
-        │   proxy01      │       │   proxy02      │
-        │   MASTER       │◄─────►│   BACKUP       │
-        └───────┬────────┘       └────────┬───────┘
-                │                         │
-                └────────────┬────────────┘
-                             │
-                    Backend-Services
-```
-
-- **proxy01 / proxy02:** Debian 13 (trixie), 2 vCPU, 2 GB RAM, je auf einem anderen Proxmox-Host
-  (VM-Anlage: [`scripts/proxmox-create-vm.sh`](scripts/proxmox-create-vm.sh))
-- **nginx:** nativ installiert (kein Docker)
-- **keepalived:** VRRP für Floating-IP-Failover
-- **Tailscale:** für Admin-Zugriff auf die Statusseite
-- **certbot:** Let's Encrypt, Renewals nur auf MASTER, Sync zu BACKUP
-- **GitHub:** Single Source of Truth, Pull-basiertes Deployment via systemd-timer
-
-## Verzeichnisstruktur
-
-```
-.
-├── nginx/                  # nginx-Konfiguration
-│   ├── nginx.conf          # Hauptkonfiguration
-│   ├── conf.d/             # globale Snippets
-│   ├── snippets/           # wiederverwendbare Bausteine
-│   └── sites-available/    # eine Datei pro Service
-├── keepalived/             # VRRP-Konfiguration
-├── status/                 # Flask-Statusseite
-├── scripts/                # Deploy-, Sync-, Healthcheck-Scripts
-├── systemd/                # systemd-Units und Timer
-├── ansible/                # optional: Provisionierung
-└── docs/                   # Setup-Anleitungen, Runbooks
+# 3. Browser öffnen: http://<vm-ip>:81
+#    Default-Login: admin@example.com / changeme  (sofort ändern!)
 ```
 
-## Erste Schritte
+Vollständige Schritt-für-Schritt-Doku: **[docs/npm-setup.md](docs/npm-setup.md)**
 
-1. [Initial-Setup](docs/setup.md) — Bootstrap der beiden VMs (whiptail-TUI)
-2. [Service hinzufügen](docs/adding-a-service.md) — neue Backends einbinden
-3. [Failover testen](docs/failover-test.md) — VRRP-Wechsel verifizieren
-4. [Runbook](docs/runbook.md) — tägliche/wöchentliche Checks + Eskalationen
-5. [Recovery](docs/recovery.md) — drei Krisen-Szenarien Schritt-für-Schritt
-6. [Architektur](docs/architecture.md) — Designentscheidungen + Trade-offs
-
-## Deployment-Workflow
+## Was wo liegt
 
 ```
-[Lokaler Rechner]                [proxy01 + proxy02]
-      │                                  │
-      ├── git commit                     │
-      ├── git push                       │
-      │                                  │
-      │                              systemd-timer (alle 2 Min)
-      │                                  │
-      │                              git pull
-      │                                  │
-      │                              nginx -t
-      │                                  │
-      │                              systemctl reload nginx
+scripts/
+  proxmox-create-vm.sh      # Anlage der VM auf Proxmox-Host (1 Befehl)
+  npm-bootstrap.sh          # Setup in der VM: IP, Docker, NPM (interaktiv)
+npm/
+  docker-compose.yml        # NPM-Container-Definition
+docs/
+  npm-setup.md              # Klick-für-Klick-Anleitung für Nicht-Sysadmins
 ```
 
-## Sicherheit
+## Voraussetzungen
 
-- Statusseite lauscht **nur auf Tailscale-Interface** (nicht öffentlich)
-- TLS 1.2 + 1.3, Mozilla "intermediate" Cipher-Suite
-- HSTS, Security Headers zentral als Snippet
-- Rate Limiting für sensible Endpoints
-- fail2ban auf nginx-Logs
-- ufw: nur 22/80/443 öffentlich, Status-Port nur via Tailscale
+- Proxmox-Host mit ~20 GB freiem Speicher
+- 1 freie IP im LAN (z.B. 192.168.1.20) außerhalb des DHCP-Pools
+- Eine Domain pro Site, deren A-Record auf die VM-IP zeigt
+- Bei NAT-Router: Port 80 + 443 vom Internet auf die VM-IP weiterleiten
+
+## Was bewusst NICHT enthalten ist
+
+- **HA / Failover**: Eine VM, fällt sie aus, ist der Proxy down. Im Homelab
+  meist akzeptabel, Recovery aus Backup ist eine Sache von Minuten.
+- **Externe Erreichbarkeit der Web-UI**: Nur LAN. Wenn du von unterwegs
+  zugreifen willst, ist Tailscale oder ein VPN die richtige Lösung
+  (siehe Doku, „Häufige Fragen").
+
+## Lizenz
+
+[MIT](LICENSE)

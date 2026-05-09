@@ -1,43 +1,54 @@
 # Projekt-Kontext für Claude Code
 
 ## Was ist das?
-Hochverfügbares Reverse-Proxy-Setup mit zwei nginx-Nodes (proxy01 MASTER,
-proxy02 BACKUP) auf zwei separaten Proxmox-Hosts im selben Layer-2-Netz.
-Floating-IP via keepalived/VRRP. Admin-Zugriff über Tailscale.
+Reverse-Proxy-Setup mit Web-UI auf Basis von Nginx Proxy Manager (NPM).
+Eine VM auf Proxmox, Debian 13, NPM als Docker-Container, Konfiguration
+ausschließlich über die Web-UI auf Port 81.
+
+Zielgruppe: Homelab-Nutzer ohne Linux-/Sysadmin-Erfahrung. Daher zwei
+Bootstrap-Scripts, die alles abnehmen.
 
 ## Architektur-Entscheidungen (nicht ohne Rückfrage ändern!)
-- nginx läuft NATIV, nicht in Docker
-- Repo ist Single Source of Truth, beide Nodes pullen via systemd-timer alle 2 Min
-- sites-enabled wird NICHT über Git verteilt (manuelles Enable pro Node)
-- Cert-Renewals nur auf MASTER, Sync zu BACKUP via Tailscale+rsync
-- values.env liegt unter /etc/proxy-config/, niemals im Repo
+- **Eine** VM, kein HA. Fällt sie aus, ist der Proxy down.
+- NPM läuft als Docker-Container, persistente Daten unter `/opt/npm/`
+- IP-Konfiguration via Debian-natives ifupdown (`/etc/network/interfaces`)
+- Bootstrap-Pfad ist Two-Phase: Phase A interaktive Eingaben + IP-Wechsel
+  mit systemd-run-Reboot, Phase B (auto-resume nach Reboot) installiert
+  Docker + NPM
+- Web-UI nur im LAN erreichbar (kein Tailscale by default, kein
+  Public-Access)
 
 ## Konventionen
-- Shell-Scripts: bash, set -euo pipefail, ShellCheck-clean
-- nginx-Configs: 4 Spaces Einrückung, Snippets statt Wiederholung
-- Python: PEP-8, Type Hints wo sinnvoll, keine zusätzlichen Abhängigkeiten
-  ohne Rückfrage (Statusseite soll schlank bleiben)
+- Shell-Scripts: bash, `set -euo pipefail`, ShellCheck-clean
+- IP-Wechsel-Mechanik: `systemd-run --on-active=5s` für Reboot,
+  ifupdown statt networkd, `chattr +i` auf resolv.conf
+- Doku auf Deutsch (Klartext, keine Sysadmin-Insider-Sprache)
 - Commit-Messages: kurz und aussagekräftig, deutsch oder englisch konsistent
 
 ## Was nie ins Repo darf
-- Echte Domains (nutze example.com in Beispielen)
-- IPs der Backends (Platzhalter wie 10.0.0.50)
+- Echte Domains (nutze example.com / beispiel.de in Beispielen)
+- Backend-IPs aus dem realen Heimnetz (Platzhalter wie 10.0.0.50 / 192.168.1.30)
 - Zertifikate, Keys, Passwörter
-- values.env (nur values.env.example)
+- NPM-Datenbank (liegt unter `/opt/npm/data/`, nie im Repo)
 
 ## Stand des Projekts
-- [ ] VMs proxy01/proxy02 auf Proxmox erstellt
-- [ ] Tailscale installiert und beide Nodes im Mesh
-- [ ] Bootstrap-Script gelaufen
-- [ ] values.env auf beiden Nodes konfiguriert
-- [ ] Erster Test-Service deployed
-- [ ] Failover-Test bestanden
-- [ ] Erste Produktiv-Services migriert
+- [ ] VM auf Proxmox erstellt
+- [ ] Bootstrap durchgelaufen
+- [ ] Erstes Login in NPM-Web-UI + Default-Passwort geändert
+- [ ] Erste Site (Domain → Backend) erfolgreich angelegt
+- [ ] Backup-Strategie eingerichtet (siehe docs/npm-setup.md Phase 5)
 
 (Diese Checkliste bei Fortschritt aktualisieren!)
 
 ## Nützliche Kommandos
-- nginx -t && systemctl reload nginx
-- journalctl -u keepalived -f
-- tailscale status
-- systemctl list-timers proxy-deploy.timer
+- `cd /opt/npm && docker compose ps` — Status des NPM-Containers
+- `cd /opt/npm && docker compose logs npm` — Logs
+- `cd /opt/npm && docker compose pull && docker compose up -d` — Update
+- `tar czf /root/npm-backup-$(date +%F).tar.gz -C /opt/npm data letsencrypt` — Backup
+
+## Historie
+Frühere Repo-Versionen enthielten ein HA-Setup mit zwei nginx-Nodes,
+keepalived/VRRP, GitOps-Workflow und einer eigenen Status-Site. Das
+wurde im Mai 2026 zugunsten des einfachen NPM-Pfads aufgegeben — der
+HA-Komplexität stand kein realer Bedarf in diesem Homelab gegenüber.
+Wer das alte Setup nachschlagen will: Git-History vor Mai 2026.
