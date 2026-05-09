@@ -336,8 +336,9 @@ collect_peer() {
     PEER_NAME=$(ask_validated "Schritt 9a/10: Hostname der Peer-Node" \
 "Wie heißt die ANDERE Node (das Gegenstück zu dieser hier)?
 
-Wenn diese hier proxy01 ist, ist der Peer proxy02 — und umgekehrt. \
-Wird nur in der Statusseite zur Anzeige genutzt." \
+Diese Node hier hast du '${NODE_NAME}' (${NODE_ROLE}) genannt — der \
+Peer ist also üblicherweise '${default_peer}'. Wird nur in der \
+Statusseite zur Anzeige genutzt." \
         "$default_peer" \
         '^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$' \
         "Hostname-Format: a-z, 0-9, '-'")
