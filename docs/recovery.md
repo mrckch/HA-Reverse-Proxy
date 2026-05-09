@@ -182,6 +182,20 @@ Auf **beiden** Nodes:
 sudo /opt/reverse-proxy/scripts/enable-site.sh <service-name>
 ```
 
+### Schritt 4b — Tailscale aktivieren (optional, empfohlen)
+
+Wenn beim Bootstrap kein Tailscale-Authkey eingegeben wurde, jetzt nachholen
+(auf **beiden** Nodes):
+
+```bash
+tailscale up --ssh --hostname=$(hostname)
+# Authkey aus https://login.tailscale.com/admin/settings/keys
+/usr/local/sbin/proxy-tailscale-sync     # Sofort-Sync, sonst max 10 Min warten
+```
+
+Der `proxy-tailscale-sync.timer` (in Phase B installiert) trägt
+`STATUS_BIND_IP` und `PEER_TAILSCALE_IP` automatisch in `values.env` nach.
+
 ### Schritt 5 — Failover-Test, dann ruhen lassen
 
 Siehe [failover-test.md](failover-test.md). Wenn Failover sauber durchläuft,

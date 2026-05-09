@@ -86,20 +86,44 @@ Eingaben:
 - Eigene statische IP (anders als proxy01!)
 - **Identische** Floating-IP, VRRP Router-ID und VRRP-Passwort
 - Repo-URL identisch
-- Peer-Tailscale-IP: die TS-IP von proxy01 (siehst du im Tailscale-Admin oder
-  per `tailscale status` auf proxy01)
+- Peer-Tailscale-IP: kann leer bleiben — `proxy-tailscale-sync.timer`
+  trägt sie automatisch nach (siehe Schritt 4)
 
 **Auch hier**: Public-Key in GitHub eintragen (zweiter Deploy-Key, separat).
 
-## Schritt 4: Peer-Tailscale-IP nachtragen (auf proxy01)
+## Schritt 4: Tailscale aktivieren (falls noch nicht geschehen)
 
-Beim Bootstrap von proxy01 hattest du den TS-Peer evtl. noch leer gelassen.
-Jetzt nachholen:
+Tailscale ist optional, macht das Setup aber komfortabel: Cert-Sync MASTER →
+BACKUP läuft darüber, die Status-Site ist von außen erreichbar (statt nur
+auf 127.0.0.1), und die Cluster-Statusanzeige sieht den Peer.
+
+Wenn du beim Bootstrap keinen Tailscale-Authkey eingegeben hast oder die
+Verbindung nicht klappte, holst du das nach — auf **beiden** Nodes:
 
 ```bash
-sudo nano /etc/proxy-config/values.env
-# Zeile: PEER_TAILSCALE_IP=100.x.x.x
-sudo systemctl restart proxy-status
+tailscale up --ssh --hostname=$(hostname)
+```
+
+Den Authkey aus https://login.tailscale.com/admin/settings/keys (Reusable,
+Ephemeral=NO).
+
+Sobald Tailscale auf einer Node läuft, trägt der bereits installierte
+**`proxy-tailscale-sync.timer`** automatisch innerhalb 1–10 Min die richtigen
+Werte in `/etc/proxy-config/values.env` ein:
+- `STATUS_BIND_IP` ← die eigene Tailscale-IP (statt 127.0.0.1-Fallback)
+- `PEER_TAILSCALE_IP` ← die Tailscale-IP der Peer-Node
+
+Sofortiger Sync ohne 10-Min-Warten:
+
+```bash
+/usr/local/sbin/proxy-tailscale-sync     # einmal manuell triggern
+```
+
+Verifikation:
+
+```bash
+grep -E '^(STATUS_BIND_IP|PEER_TAILSCALE_IP)' /etc/proxy-config/values.env
+systemctl list-timers proxy-tailscale-sync.timer --no-pager
 ```
 
 ## Schritt 5: Verifikation
